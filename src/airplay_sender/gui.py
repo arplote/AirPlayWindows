@@ -764,6 +764,14 @@ class AirPlayGUI:
                     self.lbl_buffer_info.config(
                         text=f"Tampon : {lvl_ms} ms | Latence est. : ~{lat_est} ms"
                     )
+
+                # Synchronisation dynamique du curseur de volume avec les gestes Windows / Touchpad
+                if self.supervisor.volume is not None and not self._volume_update_job:
+                    win_pct = int(self.supervisor.volume * 100)
+                    if abs(int(self.vol_scale.get()) - win_pct) >= 1:
+                        self.vol_scale.set(win_pct)
+                        self.lbl_volume_val.config(text=f"{win_pct} %")
+                        self.current_volume = self.supervisor.volume
             else:
                 self.vu_bar["value"] = 0
                 if self.current_state == State.CONNECTING:

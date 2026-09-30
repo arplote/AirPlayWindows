@@ -23,6 +23,7 @@ from airplay_sender.capture import LoopbackCapture
 from airplay_sender.devices_watch import AudioDeviceWatcher
 from airplay_sender.metrics import MetricsLogger, SessionMetrics
 from airplay_sender.streamer import AirPlayStreamer, set_raop_latency_ms
+from airplay_sender.windows_volume import WindowsVolumeWatcher
 
 _LOGGER = logging.getLogger("airplay_sender.supervisor")
 
@@ -77,6 +78,7 @@ class Supervisor:
         self._feeder_thread: threading.Thread | None = None
         self._feeder_stop_event = threading.Event()
         self._device_watcher: AudioDeviceWatcher | None = None
+        self._volume_watcher: WindowsVolumeWatcher | None = None
         self._stream_task: asyncio.Task[None] | None = None
         self._metrics_logger: MetricsLogger | None = None
         self.metrics = SessionMetrics()
@@ -152,13 +154,23 @@ class Supervisor:
         self.metrics.estimated_latency_ms = float(buffer_ms + raop_latency_ms)
 
     async def set_volume(self, level: float) -> None:
-        """Modifie le niveau de volume (0.0 à 1.0) sur l'enceinte active."""
+        """Modifie le niveau de volume (0.0 à 1.0) sur l'enceinte active et le pipeline."""
         self.volume = level
-        if self._streamer and self._state == State.STREAMING:
-            try:
-                await self._streamer.set_volume(level)
-            except Exception as exc:  # noqa: BLE001
-                _LOGGER.warning("Impossible de régler le volume sur l'enceinte : %s", exc)
+        if self._pipeline:
+            self._pipeline.set_volume_scale(level)
+
+        # Synchroniser également le curseur Windows si pycaw est disponible
+        try:
+            import comtypes
+            from pycaw.pycaw import AudioUtilities
+
+            comtypes.CoInitialize()
+            spk = AudioUtilities.GetSpeakers()
+            if spk and spk.EndpointVolume:
+                spk.EndpointVolume.SetMasterVolumeLevelScalar(level, None)
+            comtypes.CoUninitialize()
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("Synchronisation volume Windows non supportée : %s", exc)
 
     def _on_default_audio_device_changed(self, new_device_info: dict[str, Any]) -> None:
         """Gère le branchement/débranchement d'un casque ou changement de sortie Windows."""
@@ -208,6 +220,9 @@ class Supervisor:
                     buffer_ms=self.buffer_ms,
                 )
 
+            if self.volume is not None and self._pipeline:
+                self._pipeline.set_volume_scale(self.volume)
+
             self._feeder_stop_event.clear()
             self._feeder_thread = threading.Thread(
                 target=self._capture_feeder_worker,
@@ -252,6 +267,16 @@ class Supervisor:
             poll_interval=2.0,
         )
         self._device_watcher.start()
+
+        # Surveillance du volume Windows en temps réel (touchpad, clavier, mixeur)
+        def _on_win_volume(scalar: float, is_muted: bool) -> None:
+            eff_vol = 0.0 if is_muted else scalar
+            self.volume = eff_vol
+            if self._pipeline:
+                self._pipeline.set_volume_scale(eff_vol)
+
+        self._volume_watcher = WindowsVolumeWatcher(on_volume_changed=_on_win_volume)
+        self._volume_watcher.start()
 
         def get_current_metrics() -> SessionMetrics:
             if self._pipeline:
@@ -302,8 +327,12 @@ class Supervisor:
                         credentials=self.credentials,
                         protocol=Protocol.RAOP,
                     )
-                    if self.volume is not None:
-                        await self._streamer.set_volume(self.volume)
+                    # Régler l'enceinte au niveau nominal pour que l'atténuation logicielle
+                    # pilote 100% de la dynamique sonore de façon ultra-réactive
+                    try:
+                        await self._streamer.set_volume(1.0)
+                    except Exception as vol_exc:  # noqa: BLE001
+                        _LOGGER.debug("Initialisation du volume matériel : %s", vol_exc)
                     self._consecutive_failures = 0
                 except Exception as conn_exc:  # noqa: BLE001
                     _LOGGER.error("Échec de connexion à '%s' : %s", target_device.name, conn_exc)
@@ -338,6 +367,9 @@ class Supervisor:
 
         finally:
             self._set_state(State.STOPPED)
+            if self._volume_watcher:
+                self._volume_watcher.stop()
+                self._volume_watcher = None
             if self._device_watcher:
                 self._device_watcher.stop()
             if self._metrics_logger:

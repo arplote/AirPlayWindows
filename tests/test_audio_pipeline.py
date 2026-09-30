@@ -98,3 +98,27 @@ def test_pipeline_resampling_1khz_fft() -> None:
     # La fréquence crête doit être précisément à 1000 Hz ± 2 Hz
     assert abs(measured_peak_freq - freq_target) < 2.0
     assert 0.5 < pipeline.stats.current_peak < 0.7
+
+
+def test_pipeline_volume_scaling() -> None:
+    """Vérifie l'atténuation logicielle du signal audio selon le volume défini."""
+    pipeline = AudioPipeline(in_rate=44100, in_channels=2, out_rate=44100)
+    samples = np.full(1000, 10000, dtype=np.int16)
+    data = samples.tobytes()
+
+    # 1. Volume à 50%
+    pipeline.set_volume_scale(0.5)
+    assert pipeline.volume_scale == 0.5
+    pipeline.push(data)
+
+    out_50 = pipeline.pull(len(data))
+    samples_out_50 = np.frombuffer(out_50, dtype=np.int16)
+    assert np.allclose(samples_out_50, 5000, atol=2)
+
+    # 2. Mute (volume 0.0)
+    pipeline.set_volume_scale(0.0)
+    pipeline.push(data)
+    out_mute = pipeline.pull(len(data))
+    samples_out_mute = np.frombuffer(out_mute, dtype=np.int16)
+    assert np.all(samples_out_mute == 0)
+    assert pipeline.stats.current_peak == 0.0

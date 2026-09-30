@@ -17,6 +17,8 @@ dependencies = [
     "Pillow>=10.0.0",
     "soxr>=1.0.0",
     "zeroconf>=0.150.0",
+    "pycaw>=20240101",
+    "comtypes>=1.4.0",
 ]
 
 [tool.ruff]

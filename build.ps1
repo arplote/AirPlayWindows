@@ -68,6 +68,8 @@ $PyInstallerArgs = @(
     "--hidden-import", "srptools",
     "--hidden-import", "miniaudio",
     "--hidden-import", "tinytag",
+    "--collect-all", "pycaw",
+    "--collect-all", "comtypes",
     "--clean",
     "--noconfirm",
     "src/airplay_sender/__main__.py"

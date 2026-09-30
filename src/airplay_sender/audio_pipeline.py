@@ -71,6 +71,7 @@ class AudioPipeline:
 
         self._lock = threading.Lock()
         self._buffer = bytearray()
+        self._volume_scale: float = 1.0
         self.stats = PipelineStats()
 
         # Resampler soxr streaming si changement de fréquence
@@ -85,6 +86,15 @@ class AudioPipeline:
             )
 
         self._level_history: list[float] = []
+
+    @property
+    def volume_scale(self) -> float:
+        """Multiplicateur de volume logiciel actuel (0.0 à 1.0)."""
+        return self._volume_scale
+
+    def set_volume_scale(self, scale: float) -> None:
+        """Définit le multiplicateur de volume logiciel (0.0 à 1.0)."""
+        self._volume_scale = max(0.0, min(1.0, float(scale)))
 
     @property
     def level_ms(self) -> float:
@@ -108,10 +118,6 @@ class AudioPipeline:
         if frames_in == 0:
             return
 
-        # Calcul de la crête audio (normalisée entre 0.0 et 1.0)
-        max_val = float(np.max(np.abs(samples)))
-        self.stats.current_peak = min(1.0, max_val / 32768.0)
-
         reshaped = samples.reshape((frames_in, self.in_channels))
 
         # 2. Downmix éventuel vers 2 canaux stéréo
@@ -128,7 +134,19 @@ class AudioPipeline:
         else:
             stereo = reshaped
 
-        # 3. Rééchantillonnage vers out_rate (44.1 kHz)
+        # 3. Atténuation de volume logiciel temps réel (synchronisation Windows / Touchpad)
+        if self._volume_scale <= 0.001:
+            stereo = np.zeros_like(stereo)
+            self.stats.current_peak = 0.0
+        elif self._volume_scale < 0.999:
+            scaled = stereo.astype(np.float32) * self._volume_scale
+            stereo = np.clip(scaled, -32768, 32767).astype(np.int16)
+            self.stats.current_peak = min(1.0, float(np.max(np.abs(stereo))) / 32768.0)
+        else:
+            max_val = float(np.max(np.abs(stereo)))
+            self.stats.current_peak = min(1.0, max_val / 32768.0)
+
+        # 4. Rééchantillonnage vers out_rate (44.1 kHz)
         if self._resampler is not None:
             resampled = self._resampler.resample_chunk(stereo)
             processed_bytes = resampled.tobytes()
