@@ -101,5 +101,19 @@ Ce document consigne les choix structurants, le contexte, les options étudiées
   - Clé de registre `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\AirPlaySender`.
   - Utilise `pythonw.exe` en mode développement ou l'exécutable PyInstaller en mode packagé, évitant l'ouverture intempestive d'une fenêtre console au démarrage de Windows.
 
+---
+
+## 2026-09-30 — Packaging Autonome Windows avec PyInstaller (Phase 8)
+
+- **Contexte** : Fournir un binaire exécutable autonome pour Windows 11 ne nécessitant aucune installation préalable de Python.
+- **Choix du mode PyInstaller** :
+  - Mode `--onedir` retenu plutôt que `--onefile` : démarrage instantané sans décompression de 100 Mo dans `%TEMP%` à chaque lancement, et meilleure compatibilité avec les antivirus (réduit drastiquement le risque de faux positifs).
+  - Mode `--noconsole` par défaut (avec option `-DebugConsole` dans `build.ps1` pour générer une variante de diagnostic).
+- **Collecte des données et binaires natifs** :
+  - Collecte explicite des données de `pyatv` et `zeroconf`.
+  - Collecte explicite des binaires natifs C/C++ de `pyaudiowpatch` (`_portaudio`) et `soxr`.
+  - Icône multi-résolution intégrée au binaire via `assets/icon.ico`.
+
+
 
 

@@ -135,6 +135,19 @@ Ce document contient les résultats empiriques, mesures de performance, temps de
   - Instance unique (`single_instance.py`) : Mutex Win32 testé avec succès, rejet immédiat de la seconde instance avec détection `ERROR_ALREADY_EXISTS`.
   - Gestion du registre Windows (`autostart.py`) : intégration dans `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
 
+---
+
+## Phase 8 — Packaging Autonome (PyInstaller)
+
+- **Date** : 2026-09-30
+- **Validation du packaging (`build.ps1`)** :
+  - Génération de l'icône multi-résolution `assets/icon.ico` (20 Ko, 16 à 256 px).
+  - Compilation complète avec PyInstaller 6.22 en mode `--onedir` et `--noconsole` (durée de compilation : 27 secondes).
+  - Test d'exécution directe de l'exécutable autonome `dist\AirPlaySender\AirPlaySender.exe` :
+    - `AirPlaySender.exe --help` : exécution instantanée avec aide complète.
+    - `AirPlaySender.exe diag` : exécution complète sans console intempestive, collecte des loopbacks WASAPI et interfaces réseau fonctionnelle.
+
+
 
 
 
