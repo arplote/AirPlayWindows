@@ -15,7 +15,7 @@ import pyatv.protocols.raop as raop
 from pyatv.const import Protocol
 from pyatv.interface import AppleTV, BaseConfig, MediaMetadata
 from pyatv.protocols.raop import audio_source
-from pyatv.protocols.raop.audio_source import AudioSource
+from pyatv.protocols.raop.audio_source import AudioSource, _to_audio_samples
 from pyatv.support.metadata import EMPTY_METADATA
 
 from airplay_sender.audio_pipeline import AudioPipeline
@@ -53,7 +53,9 @@ class PipelineAudioSource(AudioSource):
 
         nbytes = nframes * self._channels * self._sample_size
         # pull() renvoie toujours nbytes (produit du silence si le système est muet)
-        return self.pipeline.pull(nbytes)
+        raw_pcm = self.pipeline.pull(nbytes)
+        # Conversion obligatoire en Big-Endian (s16be) pour le protocole réseau RAOP / AirPlay
+        return _to_audio_samples(raw_pcm)
 
     async def get_metadata(self) -> MediaMetadata:
         return EMPTY_METADATA

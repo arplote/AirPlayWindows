@@ -129,3 +129,4 @@ Si un problème persiste :
    ```
 2. Ou faites un clic droit sur l'icône dans la barre des tâches > **Copier le rapport de diagnostic**.
 3. Consultez les sections du rapport pour vérifier l'adresse IP active, le loopback par défaut et les dernières traces d'erreur.
+
