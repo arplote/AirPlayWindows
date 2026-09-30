@@ -248,6 +248,8 @@ class TrayApp:
             volume=self.current_volume,
             credentials=self.config.credentials.raop or None,
             on_state_change=self._on_state_change,
+            prefer_virtual_cable=getattr(self.config.audio, "prefer_virtual_cable", True),
+            capture_device=self.config.audio.capture_device,
         )
         asyncio.run_coroutine_threadsafe(self.supervisor.run(), self.loop)
 

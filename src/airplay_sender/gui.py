@@ -292,14 +292,16 @@ class AirPlayGUI:
         )
         self.lbl_audio_hint.pack(side=tk.RIGHT)
 
-        lbl_echo_tip = tk.Label(
+        self.lbl_routing_tip = tk.Label(
             audio_inner,
-            text="💡 Astuce : Baissez ou coupez le son de votre PC pour éviter l'écho acoustique.",
-            font=("Segoe UI", 8, "italic"),
+            text="🎧 Sortie : Initialisation de la source audio...",
+            font=("Segoe UI", 8),
             bg="#FFFFFF",
             fg="#64748B",
+            wraplength=460,
+            justify=tk.LEFT,
         )
-        lbl_echo_tip.pack(anchor="w", pady=(6, 0))
+        self.lbl_routing_tip.pack(anchor="w", pady=(6, 0))
 
         # -------------------------------------------------------------
         # CARTE 3 : ENCEINTE CIBLE
@@ -724,12 +726,37 @@ class AirPlayGUI:
                 pct = int(peak * 100)
                 self.vu_bar["value"] = pct
 
+                is_virt = self.supervisor.is_capture_virtual
+                cap_name = self.supervisor.capture_device_name
+
+                if is_virt:
+                    self.lbl_routing_tip.config(
+                        text=(
+                            "🎧 Sortie dédiée (Câble Virtuel) : Choisissez 'CABLE Input' "
+                            "dans Windows pour jouer sur la Devialet (PC muet), "
+                            "ou 'Haut-parleurs' pour le PC."
+                        ),
+                        fg="#059669",
+                    )
+                else:
+                    self.lbl_routing_tip.config(
+                        text=(
+                            f"💻 Sortie miroir : {cap_name}\n"
+                            "Baissez le son PC pour éviter l'écho, ou lancez "
+                            "'Installer_VB-CABLE.bat' pour la sortie dédiée."
+                        ),
+                        fg="#64748B",
+                    )
+
                 if peak > 0.02:
                     self.lbl_audio_peak.config(text=f"Signal actif ({pct} %)", fg="#10B981")
-                    self.lbl_audio_hint.config(text="Capture active du son PC", fg="#10B981")
+                    self.lbl_audio_hint.config(
+                        text="Capture Câble Virtuel" if is_virt else "Capture son PC",
+                        fg="#10B981",
+                    )
                 else:
                     self.lbl_audio_peak.config(text="Silence (0 %)", fg="#64748B")
-                    self.lbl_audio_hint.config(text="En attente de lecture audio", fg="#94A3B8")
+                    self.lbl_audio_hint.config(text="En attente de son", fg="#94A3B8")
 
                 if self.supervisor.pipeline:
                     lvl_ms = int(self.supervisor.pipeline.level_ms)
@@ -840,6 +867,8 @@ class AirPlayGUI:
             volume=self.current_volume,
             credentials=self.config.credentials.raop or None,
             on_state_change=self._on_state_change,
+            prefer_virtual_cable=getattr(self.config.audio, "prefer_virtual_cable", True),
+            capture_device=self.config.audio.capture_device,
         )
         asyncio.run_coroutine_threadsafe(self.supervisor.run(), self.loop)
 

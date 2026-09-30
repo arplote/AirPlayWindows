@@ -216,9 +216,12 @@ async def cmd_run(args: argparse.Namespace, config: AppConfig) -> int:
     supervisor = Supervisor(
         target_name=target_name,
         buffer_ms=buffer_ms,
+        raop_latency_ms=getattr(config.audio, "raop_latency_ms", 250),
         volume=volume,
         credentials=credentials,
         on_state_change=_state_listener,
+        prefer_virtual_cable=getattr(config.audio, "prefer_virtual_cable", True),
+        capture_device=config.audio.capture_device,
     )
 
     try:

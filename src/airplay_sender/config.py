@@ -42,6 +42,7 @@ class AudioConfig(BaseModel):
     raop_latency_ms: int = Field(default=250, ge=100, le=2000)
     target_samplerate: int = Field(default=44100)
     capture_device: str = "default-loopback"
+    prefer_virtual_cable: bool = True
 
     @field_validator("target_samplerate")
     @classmethod

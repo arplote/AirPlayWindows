@@ -51,6 +51,8 @@ class Supervisor:
         credentials: str | None = None,
         on_state_change: Callable[[State], None] | None = None,
         sleep_func: Callable[[float], Any] | None = None,
+        prefer_virtual_cable: bool = True,
+        capture_device: str | None = None,
     ) -> None:
         self.target_name = target_name
         self.buffer_ms = buffer_ms
@@ -59,6 +61,8 @@ class Supervisor:
         self.credentials = credentials
         self.on_state_change = on_state_change
         self._sleep = sleep_func or asyncio.sleep
+        self.prefer_virtual_cable = prefer_virtual_cable
+        self.capture_device = capture_device
 
         set_raop_latency_ms(self.raop_latency_ms)
 
@@ -90,6 +94,16 @@ class Supervisor:
     def pipeline(self) -> AudioPipeline | None:
         """Accès au pipeline audio actif pour les métriques temps réel."""
         return self._pipeline
+
+    @property
+    def capture_device_name(self) -> str:
+        """Nom du périphérique actuellement capturé."""
+        return self._capture.device_name if self._capture else "Non initialisé"
+
+    @property
+    def is_capture_virtual(self) -> bool:
+        """Indique si la capture s'effectue sur un câble audio virtuel dédié."""
+        return self._capture.is_virtual if self._capture else False
 
     def get_audio_level(self) -> float:
         """Retourne le niveau de crête audio courant (0.0 à 1.0) ou 0.0 si inactif."""
@@ -148,6 +162,16 @@ class Supervisor:
 
     def _on_default_audio_device_changed(self, new_device_info: dict[str, Any]) -> None:
         """Gère le branchement/débranchement d'un casque ou changement de sortie Windows."""
+        # Si un câble virtuel dédié est capturé, le changement de sortie par défaut dans
+        # Windows permet d'activer ou désactiver l'envoi vers l'enceinte sans couper la session.
+        if self._capture and self._capture.is_virtual:
+            _LOGGER.info(
+                "Sortie Windows modifiée (%s). Capture maintenue sur le câble virtuel dédié '%s'.",
+                new_device_info.get("name"),
+                self._capture.device_name,
+            )
+            return
+
         _LOGGER.info(
             "Sortie audio système changée : '%s'. Réinitialisation de la capture...",
             new_device_info.get("name"),
@@ -164,7 +188,10 @@ class Supervisor:
             self._capture.stop()
 
         try:
-            self._capture = LoopbackCapture()
+            self._capture = LoopbackCapture(
+                device_name=self.capture_device,
+                prefer_virtual=self.prefer_virtual_cable,
+            )
             self._capture.start()
 
             # Initialiser ou mettre à jour le pipeline si la fréquence d'échantillonnage a changé
