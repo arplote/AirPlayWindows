@@ -146,8 +146,8 @@ def main() -> int:
     config = load_config(args.config)
 
     if not args.subcommand:
-        parser.print_help()
-        return 0
+        # Si lancé sans sous-commande (ex: double-clic sur l'exécutable Windows), démarrer en mode Tray
+        return cmd_tray(args, config)
 
     if args.subcommand == "scan":
         return asyncio.run(cmd_scan(args, config))

@@ -71,6 +71,25 @@ Write-Host "[3/3] Exécution de PyInstaller ($ConsoleFlag)..." -ForegroundColor 
 & $PythonExe $PyInstallerArgs
 
 if ($LASTEXITCODE -eq 0) {
+    # Nettoyage du dossier temporaire build pour éviter de lancer l'intermédiaire incomplet
+    $BuildDir = Join-Path $PSScriptRoot "build"
+    if (Test-Path $BuildDir) {
+        Remove-Item -Recurse -Force $BuildDir
+    }
+
+    # Création d'un raccourci Windows pratique à la racine du projet
+    try {
+        $WshShell = New-Object -ComObject WScript.Shell
+        $Shortcut = $WshShell.CreateShortcut((Join-Path $PSScriptRoot "AirPlaySender.lnk"))
+        $Shortcut.TargetPath = (Join-Path $PSScriptRoot "dist\AirPlaySender\AirPlaySender.exe")
+        $Shortcut.WorkingDirectory = (Join-Path $PSScriptRoot "dist\AirPlaySender")
+        $Shortcut.IconLocation = $IconPath
+        $Shortcut.Save()
+        Write-Host "Raccourci créé à la racine : AirPlaySender.lnk" -ForegroundColor Cyan
+    } catch {
+        Write-Warning "Impossible de créer le raccourci .lnk : $_"
+    }
+
     Write-Host "`n[SUCCÈS] Package créé dans : dist\AirPlaySender\" -ForegroundColor Green
     Write-Host "Exécutable : dist\AirPlaySender\AirPlaySender.exe" -ForegroundColor Green
 } else {

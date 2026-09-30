@@ -152,9 +152,12 @@ class AirPlayStreamer:
             _LOGGER.info("Flux AirPlay arrêté.")
 
     async def set_volume(self, level: float) -> None:
-        """Règle le niveau de volume (0.0 à 100.0)."""
+        """Règle le niveau de volume (0.0 à 100.0 ou 0.0 à 1.0)."""
         if self._atv:
-            clamped = max(0.0, min(100.0, level))
+            # Si le niveau est entre 0.0 et 1.0 (ex: 0.35), convertir en pourcentage (ex: 35.0%)
+            target_pct = level * 100.0 if (0.0 <= level <= 1.0 and level > 0.0) else level
+            clamped = max(0.0, min(100.0, target_pct))
+            _LOGGER.info("Réglage du volume AirPlay : %.1f %%", clamped)
             await self._atv.audio.set_volume(clamped)
 
     async def close(self) -> None:
