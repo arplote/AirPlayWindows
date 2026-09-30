@@ -142,11 +142,7 @@ async def scan_zeroconf(
         for service_type, name in discovered_names:
             info = AsyncServiceInfo(service_type, name)
             if await info.async_request(zc.zeroconf, 3000):
-                addresses = [
-                    socket.inet_ntoa(addr)
-                    for addr in info.addresses
-                    if len(addr) == 4
-                ]
+                addresses = [socket.inet_ntoa(addr) for addr in info.addresses if len(addr) == 4]
                 props = {
                     (k.decode("utf-8", "replace") if isinstance(k, bytes) else str(k)): (
                         v.decode("utf-8", "replace") if isinstance(v, bytes) else str(v)
@@ -179,7 +175,9 @@ async def run_scan(
     interfaces = [interface] if interface else None
 
     # Création instance Zeroconf pour pyatv si interface spécifiée
-    aiozc = AsyncZeroconf(interfaces=interfaces, ip_version=IPVersion.V4Only) if interfaces else None
+    aiozc = (
+        AsyncZeroconf(interfaces=interfaces, ip_version=IPVersion.V4Only) if interfaces else None
+    )
 
     try:
         pyatv_scan_task = pyatv.scan(loop, timeout=timeout, aiozc=aiozc)
@@ -195,9 +193,7 @@ async def run_scan(
             await aiozc.async_close()
 
     if name_filter:
-        pyatv_results = [
-            cfg for cfg in pyatv_results if name_filter.lower() in cfg.name.lower()
-        ]
+        pyatv_results = [cfg for cfg in pyatv_results if name_filter.lower() in cfg.name.lower()]
 
     return pyatv_results, zc_results
 
@@ -215,7 +211,9 @@ def format_device_dict(cfg: BaseConfig) -> dict[str, Any]:
 
         services_data.append(
             {
-                "protocol": s.protocol.name if isinstance(s.protocol, Protocol) else str(s.protocol),
+                "protocol": s.protocol.name
+                if isinstance(s.protocol, Protocol)
+                else str(s.protocol),
                 "port": s.port,
                 "pairing_requirement": str(s.pairing),
                 "requires_password": s.requires_password,
@@ -268,8 +266,12 @@ def print_human_report(devices: list[dict[str, Any]], zc_results: dict[str, Any]
         print(f"  Adresse IP     : {dev['address']}")
         print(f"  Identifiant    : {dev['identifier']}")
         print(f"  Adresse MAC    : {dev['device_info']['mac']}")
-        print(f"  Modèle         : {dev['device_info']['model_str'] or dev['device_info']['model']}")
-        print(f"  OS / Firmware  : {dev['device_info']['operating_system']} (version: {dev['device_info']['version']})")
+        print(
+            f"  Modèle         : {dev['device_info']['model_str'] or dev['device_info']['model']}"
+        )
+        os_info = dev["device_info"]["operating_system"]
+        ver_info = dev["device_info"]["version"]
+        print(f"  OS / Firmware  : {os_info} (version: {ver_info})")
         print(f"  Tous les IDs   : {', '.join(dev['all_identifiers'])}")
 
         print("\n  Services disponibles :")
@@ -311,9 +313,7 @@ def print_human_report(devices: list[dict[str, Any]], zc_results: dict[str, Any]
 
 
 async def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Scan AirPlay & RAOP receivers on local network."
-    )
+    parser = argparse.ArgumentParser(description="Scan AirPlay & RAOP receivers on local network.")
     parser.add_argument(
         "--timeout",
         type=int,

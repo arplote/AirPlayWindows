@@ -26,9 +26,7 @@ _LOGGER = logging.getLogger("airplay_sender.streamer")
 _orig_open_source = audio_source.open_source
 
 
-async def _patched_open_source(
-    source: Any, *args: Any, **kwargs: Any
-) -> AudioSource:
+async def _patched_open_source(source: Any, *args: Any, **kwargs: Any) -> AudioSource:
     if isinstance(source, AudioSource):
         return source
     return await _orig_open_source(source, *args, **kwargs)

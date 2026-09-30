@@ -49,3 +49,22 @@ Ce document consigne les choix structurants, le contexte, les options étudiées
   - Utilisation de `soxr.ResampleStream` (qualité MQ) pour le streaming continu 48 kHz -> 44.1 kHz.
   - Ring buffer borné (800 ms cible, 1600 ms max) avec politique de purge des données les plus anciennes en cas d'overflow (priorité au maintien du temps réel).
   - Générateur automatique de silence (production de zéros au débit 44.1 kHz) pour combler les périodes d'inactivité de WASAPI et prévenir la fermeture de la session AirPlay.
+
+---
+
+## 2026-09-30 — Supervision résiliente, Machine d'États et Auto-réparation (Phase 5)
+
+- **Contexte** : Assurer une continuité de service ininterrompue face aux instabilités réseau, coupures d'enceinte et changements de sortie audio sous Windows.
+- **Machine d'états explicite** :
+  - États : `IDLE`, `DISCOVERING`, `CONNECTING`, `STREAMING`, `RECONNECTING`, `STOPPED`.
+  - Toute exception réseau (déconnexion socket, perte RTSP/RAOP) bascule en état `RECONNECTING`.
+- **Politique de reconnexion** :
+  - Backoff exponentiel : base 1.0s, facteur 2.0x, plafonné à 30.0s max, avec full jitter aléatoire `random.uniform(0, delay)`.
+  - Pas d'abandon silencieux : tentatives continues tant que le superviseur n'est pas explicitement arrêté.
+- **Gestion des périphériques audio (WASAPI)** :
+  - `AudioDeviceWatcher` surveille le périphérique loopback par défaut sous Windows en arrière-plan (polling 2s).
+  - En cas de changement (ex: débranchement ou branchement d'un casque / carte son externe), la capture WASAPI est réinitialisée à chaud sans interrompre la session AirPlay (le générateur de silence comble l'interruption transitoire).
+- **Observabilité et Logging** :
+  - Logs rotatifs dans `%LOCALAPPDATA%\airplay-sender\logs\app.log` (5 Mo x 5 fichiers).
+  - Filtre de masquage `SensitiveDataFilter` pour anonymiser toute clé, token ou mot de passe dans les traces.
+

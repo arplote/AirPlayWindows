@@ -99,3 +99,18 @@ Ce document contient les résultats empiriques, mesures de performance, temps de
   - Connexion automatique à l'enceinte Devialet en RAOP.
   - Capture en direct du son Windows avec bascule immédiate du silence à la musique et retour au silence.
   - Session testée avec 320 640 octets réels capturés et 2 389 376 octets diffusés sans aucune coupure, puis arrêt propre de la session.
+
+---
+
+## Phase 5 — Robustesse, Machine d'États et Auto-réparation
+
+- **Date** : 2026-09-30
+- **Validation de la machine d'états (`Supervisor`)** :
+  - Cycle de vie complet validé : `IDLE -> DISCOVERING -> CONNECTING -> STREAMING -> STOPPED`.
+  - Reconnexion automatique avec backoff exponentiel et jitter : simulation d'échecs de connexion et de coupures de stream à chaud via `FakeStreamer` (test unitaire `test_supervisor_reconnect_on_stream_failure`).
+  - Détection de changement de sortie audio Windows (`AudioDeviceWatcher`) : test unitaire `test_supervisor_device_change_resets_capture` vérifiant l'arrêt de l'ancienne capture et le redémarrage immédiat sans perte de flux.
+- **Validation du logging et sécurité (`logging_setup`)** :
+  - Rotation effective vérifiée sur fichier temporaire.
+  - Masquage des identifiants (mots de passe, tokens, secrets de pairing) dans les messages et arguments de logs validé par `test_logging.py`.
+
+

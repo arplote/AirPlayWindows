@@ -201,4 +201,3 @@ class AudioPipeline:
             if self._resampler is not None:
                 self._resampler.clear()
             self._level_history.clear()
-

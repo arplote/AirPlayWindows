@@ -93,4 +93,3 @@ class MetricsLogger:
         if self._task and not self._task.done():
             self._task.cancel()
         self._task = None
-

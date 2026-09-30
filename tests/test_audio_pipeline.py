@@ -85,4 +85,3 @@ def test_pipeline_resampling_1khz_fft() -> None:
 
     # La fréquence crête doit être précisément à 1000 Hz ± 2 Hz
     assert abs(measured_peak_freq - freq_target) < 2.0
-
