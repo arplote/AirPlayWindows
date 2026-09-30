@@ -34,3 +34,4 @@ Ce document consigne les choix structurants, le contexte, les options étudiées
   - La Devialet supporte à la fois **RAOP (AirPlay 1 audio)** et **AirPlay 2**.
   - **Stratégie prioritaire** : Utiliser le service **RAOP** via `pyatv` (service port 7000), sans PIN/mot de passe requis, avec transport UDP et codec ALAC ou PCM 16/44.1.
   - Aucun appairage complexe SRP requis (`Pairing: NotNeeded`).
+
