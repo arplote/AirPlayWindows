@@ -20,13 +20,13 @@ def get_launch_command() -> str:
     """Retourne la ligne de commande nécessaire pour démarrer l'application sans console."""
     if getattr(sys, "frozen", False):
         # Exécutable packagé (PyInstaller)
-        return f'"{sys.executable}"'
+        return f'"{sys.executable}" --minimized'
 
     # Exécution via environnement Python : privilégier pythonw.exe pour ne pas ouvrir de console cmd
     py_dir = Path(sys.executable).parent
     pythonw = py_dir / "pythonw.exe"
     exe_to_use = str(pythonw) if pythonw.exists() else sys.executable
-    return f'"{exe_to_use}" -m airplay_sender tray'
+    return f'"{exe_to_use}" -m airplay_sender --minimized'
 
 
 def is_autostart_enabled() -> bool:

@@ -50,6 +50,7 @@ AirPlayWindows/
 │       ├── config.py           # Modèles Pydantic v2 et persistance atomique
 │       ├── devices_watch.py    # Surveillance du changement de sortie audio par défaut
 │       ├── diagnostics.py      # Générateur du rapport de diagnostic
+│       ├── gui.py              # Interface graphique moderne Tkinter & barre d'état
 │       ├── icons.py            # Dessin vectoriel dynamique des icônes (Pillow)
 │       ├── logging_setup.py    # Logs rotatifs et masquage des données sensibles
 │       ├── metrics.py          # Compteurs de performance (underruns, overflows, jitter)
@@ -91,23 +92,30 @@ pip install -r requirements.txt
 
 ## Utilisation
 
-### 1. Utilisation en mode Interface Système (System Tray) — Recommandé
+### 1. Interface Graphique Fenêtrée (GUI) & Barre d'état — Recommandé
 
-Lancez simplement :
+Double-cliquez simplement sur le raccourci **`AirPlaySender.lnk`** à la racine, ou exécutez :
 ```powershell
+python -m airplay_sender
+```
+Une fenêtre moderne s'ouvre, accompagnée de son icône dans la zone de notification :
+- **Badge et bouton principal** : visualisez en un clin d'œil l'état de la connexion et démarrez/arrêtez le streaming d'un clic.
+- **Vu-mètre audio en direct** : observez en temps réel le niveau sonore capturé depuis Windows pour vérifier immédiatement que votre musique est bien prise en compte.
+- **Enceinte cible** : sélectionnez votre enceinte parmi celles détectées ou actualisez la recherche mDNS.
+- **Volume** : réglez le niveau de 0 à 100% avec le curseur ou les boutons d'accès rapide (15%, 30%, 50%, 75%).
+- **Réduction intelligente** : la fermeture de la fenêtre [X] réduit l'application dans la zone de notification (System Tray) sans interrompre la musique. Un double-clic sur l'icône du Tray la fait réapparaître au premier plan.
+- **Outils** : accès en un clic au dossier des logs et copie instantanée du rapport de diagnostic.
+
+### 2. Utilisation en mode barre d'état uniquement (System Tray)
+
+Pour démarrer directement réduit dans la barre d'état (idéal au démarrage de Windows) :
+```powershell
+python -m airplay_sender --minimized
+# ou
 python -m airplay_sender tray
 ```
-Une icône apparaît dans la zone de notification (près de l'horloge Windows) :
-- **Clic droit** sur l'icône pour ouvrir le menu :
-  - Démarrer / Arrêter la diffusion
-  - Choisir l'enceinte détectée sur le réseau
-  - Régler le volume (10 %, 25 %, 35 %, 50 %, 75 %, 100 %)
-  - Démarrer automatiquement avec Windows (active/désactive la clé `HKCU\...\Run`)
-  - Ouvrir le dossier des logs
-  - Copier le rapport de diagnostic dans le presse-papier
-  - Quitter
 
-### 2. Utilisation en ligne de commande (CLI)
+### 3. Utilisation en ligne de commande (CLI)
 
 ```powershell
 # Rechercher les enceintes disponibles et enregistrer la cible par défaut

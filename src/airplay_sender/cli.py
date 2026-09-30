@@ -261,3 +261,18 @@ def cmd_tray(args: argparse.Namespace, config: AppConfig) -> int:
             file=sys.stderr,
         )
         return 1
+
+
+def cmd_gui(args: argparse.Namespace, config: AppConfig) -> int:
+    """Lance l'application en mode interface graphique (GUI) avec fenêtre et System Tray."""
+    try:
+        from airplay_sender.gui import run_gui_app
+
+        start_min = getattr(args, "minimized", False)
+        return run_gui_app(config, config_path=args.config, start_minimized=start_min)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"[ERREUR] Impossible de lancer l'interface graphique : {exc}",
+            file=sys.stderr,
+        )
+        return 1

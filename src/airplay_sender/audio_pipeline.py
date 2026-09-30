@@ -29,6 +29,7 @@ class PipelineStats:
     silence_bytes_generated: int = 0
     current_level_ms: float = 0.0
     average_level_ms: float = 0.0
+    current_peak: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -39,6 +40,7 @@ class PipelineStats:
             "silence_bytes": self.silence_bytes_generated,
             "buffer_level_ms": round(self.current_level_ms, 1),
             "avg_level_ms": round(self.average_level_ms, 1),
+            "peak": round(self.current_peak, 3),
         }
 
 
@@ -105,6 +107,10 @@ class AudioPipeline:
         frames_in = len(samples) // self.in_channels
         if frames_in == 0:
             return
+
+        # Calcul de la crête audio (normalisée entre 0.0 et 1.0)
+        max_val = float(np.max(np.abs(samples)))
+        self.stats.current_peak = min(1.0, max_val / 32768.0)
 
         reshaped = samples.reshape((frames_in, self.in_channels))
 

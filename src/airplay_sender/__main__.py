@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 from airplay_sender import __version__
-from airplay_sender.cli import cmd_diag, cmd_pair, cmd_run, cmd_scan, cmd_tray
+from airplay_sender.cli import cmd_diag, cmd_gui, cmd_pair, cmd_run, cmd_scan, cmd_tray
 from airplay_sender.config import load_config
 from airplay_sender.logging_setup import setup_logging
 
@@ -45,6 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
         "-v",
         action="store_true",
         help="Activer la journalisation détaillée (DEBUG).",
+    )
+
+    parser.add_argument(
+        "--minimized",
+        action="store_true",
+        help="Démarrer l'application réduite dans la zone de notification (System Tray).",
     )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Sous-commandes disponibles")
@@ -124,7 +130,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Fichier de destination pour enregistrer le rapport.",
     )
 
-    # 5. TRAY
+    # 5. GUI
+    gui_parser = subparsers.add_parser(
+        "gui",
+        help="Lancer l'interface graphique de contrôle (GUI) avec fenêtre et barre d'état.",
+    )
+    gui_parser.add_argument(
+        "--minimized",
+        action="store_true",
+        help="Démarrer l'application directement dans la barre d'état sans ouvrir la fenêtre.",
+    )
+
+    # 6. TRAY
     subparsers.add_parser(
         "tray",
         help="Lancer l'application dans la zone de notification Windows (System Tray).",
@@ -145,9 +162,9 @@ def main() -> int:
     # Chargement de la configuration
     config = load_config(args.config)
 
-    if not args.subcommand:
-        # Si lancé sans sous-commande (ex: double-clic sur l'exécutable Windows), démarrer en mode Tray
-        return cmd_tray(args, config)
+    if not args.subcommand or args.subcommand == "gui":
+        # Par défaut (double-clic ou sous-commande 'gui'), lancer l'interface graphique complète
+        return cmd_gui(args, config)
 
     if args.subcommand == "scan":
         return asyncio.run(cmd_scan(args, config))

@@ -82,6 +82,17 @@ class Supervisor:
     def state(self) -> State:
         return self._state
 
+    @property
+    def pipeline(self) -> AudioPipeline | None:
+        """Accès au pipeline audio actif pour les métriques temps réel."""
+        return self._pipeline
+
+    def get_audio_level(self) -> float:
+        """Retourne le niveau de crête audio courant (0.0 à 1.0) ou 0.0 si inactif."""
+        if self._pipeline:
+            return self._pipeline.stats.current_peak
+        return 0.0
+
     def _set_state(self, new_state: State) -> None:
         if self._state == new_state:
             return
