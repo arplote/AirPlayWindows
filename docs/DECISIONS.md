@@ -68,3 +68,18 @@ Ce document consigne les choix structurants, le contexte, les options étudiées
   - Logs rotatifs dans `%LOCALAPPDATA%\airplay-sender\logs\app.log` (5 Mo x 5 fichiers).
   - Filtre de masquage `SensitiveDataFilter` pour anonymiser toute clé, token ou mot de passe dans les traces.
 
+---
+
+## 2026-09-30 — Configuration Pydantic, CLI et Diagnostic (Phase 6)
+
+- **Contexte** : Fournir une interface utilisateur en ligne de commande unifiée (`python -m airplay_sender`), stocker la configuration de manière sécurisée et robuste, et fournir un outil d'assistance pour le support.
+- **Modélisation et validation des données** :
+  - Pydantic v2 pour la sérialisation, validation des types et bornes (buffer entre 100 et 5000 ms, volume entre 0.0 et 1.0, samplerate 44100 ou 48000 Hz).
+  - Fichier stocké par défaut dans `%APPDATA%\airplay-sender\config.json`.
+- **Écriture atomique** :
+  - Écriture d'abord dans un fichier temporaire (`tempfile.mkstemp` dans le même dossier parent), puis remplacement atomique via `os.replace` pour éviter toute corruption en cas d'interruption ou coupure électrique.
+- **Diagnostic intégré (`diag`)** :
+  - `diagnostics.py` synthétise l'environnement (OS, Python, interfaces réseau, loopbacks WASAPI détectés, scan mDNS et 50 dernières lignes de logs avec credentials masqués).
+  - Utilisable à la fois en ligne de commande (`python -m airplay_sender diag`) et directement exportable dans la future interface graphique du System Tray.
+
+

@@ -47,12 +47,14 @@ class Supervisor:
         target_name: str,
         buffer_ms: int = 800,
         volume: float | None = None,
+        credentials: str | None = None,
         on_state_change: Callable[[State], None] | None = None,
         sleep_func: Callable[[float], Any] | None = None,
     ) -> None:
         self.target_name = target_name
         self.buffer_ms = buffer_ms
         self.volume = volume
+        self.credentials = credentials
         self.on_state_change = on_state_change
         self._sleep = sleep_func or asyncio.sleep
 
@@ -235,7 +237,11 @@ class Supervisor:
                 # 2. ÉTAPE : CONNEXION (CONNECTING)
                 self._set_state(State.CONNECTING)
                 try:
-                    await self._streamer.connect(target_device, protocol=Protocol.RAOP)
+                    await self._streamer.connect(
+                        target_device,
+                        credentials=self.credentials,
+                        protocol=Protocol.RAOP,
+                    )
                     if self.volume is not None:
                         await self._streamer.set_volume(self.volume)
                     self._consecutive_failures = 0

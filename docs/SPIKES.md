@@ -113,4 +113,16 @@ Ce document contient les résultats empiriques, mesures de performance, temps de
   - Rotation effective vérifiée sur fichier temporaire.
   - Masquage des identifiants (mots de passe, tokens, secrets de pairing) dans les messages et arguments de logs validé par `test_logging.py`.
 
+---
+
+## Phase 6 — Configuration, CLI et Persistance
+
+- **Date** : 2026-09-30
+- **Validation CLI & Persistance** :
+  - `python -m airplay_sender scan --timeout 3 --save "Phantom"` : découverte de l'enceinte Devialet Phantom II (`192.168.1.42:7000`) et persistance atomique dans `%APPDATA%\airplay-sender\config.json`.
+  - `python -m airplay_sender pair` : vérification que l'enceinte utilise RAOP sans appairage PIN obligatoire (`PairingRequirement.NotNeeded`), confirmation utilisateur sans blocage.
+  - `python -m airplay_sender diag` : génération complète du rapport d'environnement avec masquage des identifiants sensibles.
+  - `python -m airplay_sender run` : reprise immédiate de la cible configurée, transition automatique `IDLE -> DISCOVERING -> CONNECTING -> STREAMING` sans redemander d'appairage.
+
+
 
