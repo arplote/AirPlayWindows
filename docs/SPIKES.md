@@ -78,3 +78,24 @@ Ce document contient les résultats empiriques, mesures de performance, temps de
 - **Vérification de la fidélité audio** :
   - Enregistrement de 5.48 s de son système (`tests/assets/recorded_loopback.wav`).
   - Signal capturé : niveau RMS de 3348, crête à 35.1% de la dynamique int16, aucune saturation ni coupure.
+
+---
+
+## Phase 4 — Pipeline audio et streaming en direct (temps réel)
+
+- **Date** : 2026-09-30
+- **Spike préalable obligatoire (API pyatv stream_file)** :
+  - `stream_file` attend `Union[str, io.BufferedIOBase, asyncio.streams.StreamReader]`.
+  - Pour les objets de type flux mémoire, pyatv utilise `tinytag` (lecture d'en-tête et métadonnées) et `miniaudio.stream_any` pour décoder. Les pipes PCM infinis provoquent des blocages en recherche de fin de fichier par TinyTag.
+  - En revanche, la couche interne `StreamClient.send_audio` accepte nativement un objet dérivant de `pyatv.protocols.raop.audio_source.AudioSource` implémentant `readframes(nframes: int) -> bytes` (352 frames = 1408 octets par paquet).
+  - **Décision (Option A)** : Implémentation de `PipelineAudioSource(AudioSource)` connecté directement à l'anneau tampon (`AudioPipeline.pull`), avec pontage transparent d'`open_source`. Zéro fichier temporaire, zéro décodage inutile, latence minimale.
+- **Vérification du rééchantillonneur (`soxr`)** :
+  - Test spectral FFT : injection d'un sinus 1000 Hz à 48000 Hz dans le pipeline, analyse FFT sur la sortie rééchantillonnée à 44100 Hz.
+  - Fréquence crête mesurée : **1000.0 Hz** exacte, aucun artefact spectral, test unitaire validé.
+- **Gestion du silence & Ring Buffer** :
+  - Tampon cible : 800 ms (max 1600 ms).
+  - Génération de silence automatique : lorsque la carte son est muette (0 callback WASAPI), le pipeline injecte des zéros au rythme exact de 44.1 kHz, évitant toute fermeture de session côté enceinte.
+- **Test d'intégration en direct (`scripts/04_live_stream.py`)** :
+  - Connexion automatique à l'enceinte Devialet en RAOP.
+  - Capture en direct du son Windows avec bascule immédiate du silence à la musique et retour au silence.
+  - Session testée avec 320 640 octets réels capturés et 2 389 376 octets diffusés sans aucune coupure, puis arrêt propre de la session.

@@ -35,3 +35,17 @@ Ce document consigne les choix structurants, le contexte, les options étudiées
   - **Stratégie prioritaire** : Utiliser le service **RAOP** via `pyatv` (service port 7000), sans PIN/mot de passe requis, avec transport UDP et codec ALAC ou PCM 16/44.1.
   - Aucun appairage complexe SRP requis (`Pairing: NotNeeded`).
 
+---
+
+## 2026-09-30 — Architecture du Pipeline Audio et Streaming Direct (Phase 4)
+
+- **Contexte** : L'envoi direct continu du son Windows vers pyatv nécessite d'alimenter `stream_file` sans passer par des fichiers temporaires sur disque.
+- **Options évaluées** :
+  - *Option A* : Implémentation d'un `PipelineAudioSource` dérivé de `pyatv.protocols.raop.audio_source.AudioSource` lisant directement le ring buffer du pipeline en blocs de 352 frames (1408 octets). Pontage de `open_source` pour retourner directement l'instance sans décodage ni métadonnées bloquantes.
+  - *Option B* : Pipe nommé ou `io.BufferedIOBase` avec faux en-tête WAV. Rejetée car TinyTag tente d'analyser la taille totale du flux et bloque sur les flux infinis.
+  - *Option C* : Utilisation d'un processus ffmpeg externe. Rejetée car ajoute une dépendance binaire lourde non nécessaire.
+- **Décision** :
+  - Adoption de **l'Option A** : transmission directe, zéro copie superflue, latence minimale.
+  - Utilisation de `soxr.ResampleStream` (qualité MQ) pour le streaming continu 48 kHz -> 44.1 kHz.
+  - Ring buffer borné (800 ms cible, 1600 ms max) avec politique de purge des données les plus anciennes en cas d'overflow (priorité au maintien du temps réel).
+  - Générateur automatique de silence (production de zéros au débit 44.1 kHz) pour combler les périodes d'inactivité de WASAPI et prévenir la fermeture de la session AirPlay.
