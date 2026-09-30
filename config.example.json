@@ -1,0 +1,27 @@
+{
+  "device": {
+    "name": "Devialet Phantom",
+    "identifier": "AA:BB:CC:DD:EE:FF",
+    "last_known_ip": "192.168.1.42"
+  },
+  "credentials": {
+    "raop": ""
+  },
+  "audio": {
+    "buffer_ms": 800,
+    "target_samplerate": 44100,
+    "capture_device": "default-loopback"
+  },
+  "volume": {
+    "sync_with_windows": false,
+    "default": 0.3
+  },
+  "behavior": {
+    "autostart_stream": true,
+    "start_minimized": true,
+    "reconnect": true
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}

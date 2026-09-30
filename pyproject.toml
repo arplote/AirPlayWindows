@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "airplay-sender"
+version = "0.1.0"
+description = "AirPlay Sender pour Windows (audio système vers enceinte Devialet)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pyatv>=0.18.0",
+    "PyAudioWPatch>=0.2.12.8",
+    "numpy>=2.0.0",
+    "pydantic>=2.0.0",
+    "pystray>=0.19.5",
+    "Pillow>=10.0.0",
+    "soxr>=1.0.0",
+    "zeroconf>=0.150.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q"
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.pcapng
+config.json
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.wav
+!tests/assets/*.wav
