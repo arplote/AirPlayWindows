@@ -113,6 +113,15 @@ class Supervisor:
         if self._stream_task and not self._stream_task.done():
             self._stream_task.cancel()
 
+    async def set_volume(self, level: float) -> None:
+        """Modifie le niveau de volume (0.0 à 1.0) sur l'enceinte active."""
+        self.volume = level
+        if self._streamer and self._state == State.STREAMING:
+            try:
+                await self._streamer.set_volume(level)
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.warning("Impossible de régler le volume sur l'enceinte : %s", exc)
+
     def _on_default_audio_device_changed(self, new_device_info: dict[str, Any]) -> None:
         """Gère le branchement/débranchement d'un casque ou changement de sortie Windows."""
         _LOGGER.info(

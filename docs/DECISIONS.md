@@ -82,4 +82,24 @@ Ce document consigne les choix structurants, le contexte, les options étudiées
   - `diagnostics.py` synthétise l'environnement (OS, Python, interfaces réseau, loopbacks WASAPI détectés, scan mDNS et 50 dernières lignes de logs avec credentials masqués).
   - Utilisable à la fois en ligne de commande (`python -m airplay_sender diag`) et directement exportable dans la future interface graphique du System Tray.
 
+---
+
+## 2026-09-30 — Interface System Tray, Instance Unique et Autostart (Phase 7)
+
+- **Contexte** : Offrir une présence discrète dans la zone de notification Windows sans fenêtre console envahissante, avec contrôle rapide du volume, sélection d'enceinte et sécurité d'instance unique.
+- **Modèle de threading** :
+  - `pystray.Icon.run()` s'exécute sur le thread principal pour alimenter la boucle de messages Win32.
+  - La boucle événementielle `asyncio` s'exécute dans un thread d'arrière-plan dédié (`AsyncioThread`).
+  - Toutes les interactions utilisateur (menu → actions réseau) sont déléguées via `asyncio.run_coroutine_threadsafe`.
+  - Toutes les notifications d'état (superviseur → icône) actualisent l'icône, le tooltip et le menu via `call_soon_threadsafe` / `update_menu()`.
+- **Génération vectorielle des icônes (`icons.py`)** :
+  - Zéro dépendance sur des fichiers image externes. Pillow génère dynamiquement des icônes vectorisées en 4 couleurs (gris inactif, orange connexion, vert streaming, rouge erreur) et exporte un `.ico` multi-résolution (16 à 256 px).
+- **Instance unique (`single_instance.py`)** :
+  - Utilisation d'un Mutex nommé Win32 (`Local\AirPlaySender_SingleInstance_Mutex` via `ctypes.windll.kernel32.CreateMutexW`).
+  - Détection immédiate du code `ERROR_ALREADY_EXISTS` (183) : toute seconde tentative de lancement quitte immédiatement et silencieusement.
+- **Démarrage automatique (`autostart.py`)** :
+  - Clé de registre `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\AirPlaySender`.
+  - Utilise `pythonw.exe` en mode développement ou l'exécutable PyInstaller en mode packagé, évitant l'ouverture intempestive d'une fenêtre console au démarrage de Windows.
+
+
 

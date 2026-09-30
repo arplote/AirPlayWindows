@@ -124,5 +124,17 @@ Ce document contient les résultats empiriques, mesures de performance, temps de
   - `python -m airplay_sender diag` : génération complète du rapport d'environnement avec masquage des identifiants sensibles.
   - `python -m airplay_sender run` : reprise immédiate de la cible configurée, transition automatique `IDLE -> DISCOVERING -> CONNECTING -> STREAMING` sans redemander d'appairage.
 
+---
+
+## Phase 7 — Interface System Tray, Instance Unique et Autostart
+
+- **Date** : 2026-09-30
+- **Validation System Tray (`tray.py`)** :
+  - Génération dynamique des icônes Pillow 64x64 validée pour tous les états (`IDLE`, `DISCOVERING`, `CONNECTING`, `STREAMING`, `ERROR`).
+  - Menu contextuel complet : statut non cliquable, toggle streaming, liste dynamique des appareils découverts, réglages de volume, démarrage avec Windows, dossier de logs, copie du rapport de diagnostic dans le presse-papier, quitter.
+  - Instance unique (`single_instance.py`) : Mutex Win32 testé avec succès, rejet immédiat de la seconde instance avec détection `ERROR_ALREADY_EXISTS`.
+  - Gestion du registre Windows (`autostart.py`) : intégration dans `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+
+
 
 
