@@ -21,8 +21,8 @@ from airplay_sender.config import (
 def test_default_config() -> None:
     config = AppConfig()
     assert config.device.name == ""
-    assert config.audio.buffer_ms == 80
-    assert config.audio.raop_latency_ms == 250
+    assert config.audio.buffer_ms == 100
+    assert config.audio.raop_latency_ms == 350
     assert config.audio.target_samplerate == 44100
     assert config.volume.default == 0.3
     assert config.logging.level == "INFO"
@@ -86,12 +86,12 @@ def test_load_corrupted_json_returns_defaults(tmp_path: Path) -> None:
     cfg_file.write_text("{ this is not valid json }", encoding="utf-8")
     config = load_config(cfg_file)
     assert isinstance(config, AppConfig)
-    assert config.audio.buffer_ms == 80
+    assert config.audio.buffer_ms == 100
 
 
 def test_load_legacy_800ms_migrates_to_low_latency(tmp_path: Path) -> None:
     cfg_file = tmp_path / "legacy.json"
     cfg_file.write_text('{"audio": {"buffer_ms": 800}}', encoding="utf-8")
     config = load_config(cfg_file)
-    assert config.audio.buffer_ms == 80
-    assert config.audio.raop_latency_ms == 250
+    assert config.audio.buffer_ms == 100
+    assert config.audio.raop_latency_ms == 350

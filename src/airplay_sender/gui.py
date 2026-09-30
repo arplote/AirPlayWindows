@@ -30,6 +30,7 @@ from airplay_sender.config import AppConfig, DeviceConfig, save_config
 from airplay_sender.diagnostics import generate_diagnostic_report
 from airplay_sender.icons import get_icon
 from airplay_sender.logging_setup import get_default_log_dir
+from airplay_sender.mmcss import disable_mmcss, enable_mmcss
 from airplay_sender.single_instance import SingleInstance
 from airplay_sender.supervisor import State, Supervisor
 
@@ -84,6 +85,19 @@ class AirPlayGUI:
         self.root = root or tk.Tk()
         self._setup_window()
         self._build_ui()
+        self._fit_window_to_content()
+
+    def _fit_window_to_content(self) -> None:
+        """Ajuste la hauteur de la fenêtre au contenu (selon l'échelle d'affichage)."""
+        self.root.update_idletasks()
+        width = max(self.root.winfo_width(), self.root.winfo_reqwidth())
+        height = self.root.winfo_reqheight() + 8
+        max_height = self.root.winfo_screenheight() - 80
+        height = min(height, max_height)
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = max((self.root.winfo_screenheight() - height) // 2 - 20, 0)
+        self.root.minsize(width - 40, min(height, 620))
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def _setup_window(self) -> None:
         """Configure les paramètres de base de la fenêtre Tkinter."""
@@ -484,6 +498,33 @@ class AirPlayGUI:
         self.latency_combo.pack(side=tk.RIGHT)
         self.latency_combo.bind("<<ComboboxSelected>>", self._on_latency_profile_changed)
 
+        capture_row = tk.Frame(opts_inner, bg="#FFFFFF")
+        capture_row.pack(fill=tk.X, pady=(2, 6))
+
+        tk.Label(
+            capture_row,
+            text="Sortie Windows capturée :",
+            font=("Segoe UI", 9, "bold"),
+            bg="#FFFFFF",
+            fg="#1E293B",
+        ).pack(side=tk.LEFT)
+
+        self.capture_combo = ttk.Combobox(
+            capture_row,
+            state="readonly",
+            font=("Segoe UI", 8),
+            width=32,
+            postcommand=self._fill_capture_combo,
+        )
+        self._fill_capture_combo()
+        current_capture = getattr(self.config.audio, "capture_device", "default-loopback")
+        if current_capture in ("", "auto", "default-loopback"):
+            self.capture_combo.set(self._CAPTURE_AUTO_LABEL)
+        else:
+            self.capture_combo.set(current_capture)
+        self.capture_combo.pack(side=tk.RIGHT)
+        self.capture_combo.bind("<<ComboboxSelected>>", self._on_capture_device_changed)
+
         tools_row = tk.Frame(opts_inner, bg="#FFFFFF")
         tools_row.pack(fill=tk.X, pady=(8, 0))
 
@@ -584,11 +625,13 @@ class AirPlayGUI:
         return 0
 
     def _run_asyncio_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Exécute la boucle d'événements asyncio."""
+        """Exécute la boucle d'événements asyncio (pacing RTP inclus)."""
         asyncio.set_event_loop(loop)
+        mmcss_handle = enable_mmcss("Pro Audio")
         try:
             loop.run_forever()
         finally:
+            disable_mmcss(mmcss_handle)
             loop.close()
 
     def _init_tray_icon(self) -> None:
@@ -697,6 +740,34 @@ class AirPlayGUI:
             disable_autostart()
         if self.tray_icon:
             self.tray_icon.update_menu()
+
+    _CAPTURE_AUTO_LABEL = "Automatique (CABLE Input en priorité)"
+
+    def _fill_capture_combo(self) -> None:
+        """Liste les sorties Windows capturables (rafraîchie à chaque ouverture du menu)."""
+        from airplay_sender.capture import list_wasapi_loopback_devices
+
+        try:
+            names = [d["name"] for d in list_wasapi_loopback_devices()]
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("Liste des sorties audio indisponible : %s", exc)
+            names = []
+        current = self.capture_combo.get()
+        if current and current != self._CAPTURE_AUTO_LABEL and current not in names:
+            names.append(current)
+        self.capture_combo["values"] = [self._CAPTURE_AUTO_LABEL, *names]
+
+    def _on_capture_device_changed(self, _event: Any = None) -> None:
+        """Enregistre la sortie à capturer et redémarre la capture si le flux est actif."""
+        choice = self.capture_combo.get()
+        value = "default-loopback" if choice == self._CAPTURE_AUTO_LABEL else choice
+        self.config.audio.capture_device = value
+        save_config(self.config, self.config_path)
+        _LOGGER.info("Sortie capturée définie sur : %s", value)
+
+        if self.supervisor:
+            self.supervisor.capture_device = value
+            self.supervisor._restart_capture()
 
     def _on_latency_profile_changed(self, _event: Any = None) -> None:
         """Applique le nouveau profil de latence sélectionné."""

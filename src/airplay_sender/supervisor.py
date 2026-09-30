@@ -22,6 +22,7 @@ from airplay_sender.audio_pipeline import AudioPipeline
 from airplay_sender.capture import LoopbackCapture
 from airplay_sender.devices_watch import AudioDeviceWatcher
 from airplay_sender.metrics import MetricsLogger, SessionMetrics
+from airplay_sender.mmcss import disable_mmcss, enable_mmcss
 from airplay_sender.streamer import AirPlayStreamer, set_raop_latency_ms
 from airplay_sender.windows_volume import WindowsVolumeWatcher
 
@@ -54,6 +55,7 @@ class Supervisor:
         sleep_func: Callable[[float], Any] | None = None,
         prefer_virtual_cable: bool = True,
         capture_device: str | None = None,
+        adaptive_latency: bool = True,
     ) -> None:
         self.target_name = target_name
         self.buffer_ms = buffer_ms
@@ -64,6 +66,8 @@ class Supervisor:
         self._sleep = sleep_func or asyncio.sleep
         self.prefer_virtual_cable = prefer_virtual_cable
         self.capture_device = capture_device
+        self.adaptive_latency = adaptive_latency
+        self._adaptive_task: asyncio.Task[None] | None = None
 
         set_raop_latency_ms(self.raop_latency_ms)
 
@@ -235,12 +239,67 @@ class Supervisor:
 
     def _capture_feeder_worker(self) -> None:
         """Achemine les blocs capturés vers le pipeline."""
-        while not self._feeder_stop_event.is_set():
-            if not self._capture:
-                break
-            data = self._capture.read(timeout=0.02)
-            if data and self._pipeline:
-                self._pipeline.push(data)
+        mmcss_handle = enable_mmcss("Pro Audio")
+        try:
+            while not self._feeder_stop_event.is_set():
+                if not self._capture:
+                    break
+                data = self._capture.read(timeout=0.02)
+                if data and self._pipeline:
+                    self._pipeline.push(data)
+        finally:
+            disable_mmcss(mmcss_handle)
+
+    async def _adaptive_latency_loop(self) -> None:
+        """Ajuste dynamiquement le tampon logiciel selon la gigue observée (AIMD).
+
+        S'appuie sur les compteurs déjà suivis par le pipeline (underruns/overflows) :
+        en cas d'incident sur une fenêtre de quelques secondes, le tampon augmente par
+        paliers (jusqu'à un plafond) pour absorber la gigue réseau ; en l'absence
+        d'incident, il redescend doucement vers la valeur de base choisie par
+        l'utilisateur (profil de latence). Ne touche jamais à la latence RAOP
+        matérielle négociée, seulement au tampon logiciel côté app.
+        """
+        step_up_ms = 30
+        step_down_ms = 15
+        window_sec = 5.0
+        max_headroom_ms = 250
+
+        current_ms = self.buffer_ms
+        last_underruns = 0
+        last_overflows = 0
+
+        while not self._stop_requested:
+            # Cadence réelle indépendante du sleep_func injectable (réservé aux tests
+            # de backoff de reconnexion) : cette boucle doit toujours véritablement
+            # suspendre le task pour ne jamais monopoliser la boucle asyncio.
+            await asyncio.sleep(window_sec)
+
+            if not self.adaptive_latency or not self._pipeline or self._state != State.STREAMING:
+                continue
+
+            underruns = self._pipeline.stats.underruns
+            overflows = self._pipeline.stats.overflows
+            incidents = (underruns - last_underruns) + (overflows - last_overflows)
+            last_underruns, last_overflows = underruns, overflows
+
+            baseline_ms = self.buffer_ms
+            ceiling_ms = min(400, baseline_ms + max_headroom_ms)
+            current_ms = max(current_ms, baseline_ms)
+
+            if incidents > 0:
+                current_ms = min(ceiling_ms, current_ms + step_up_ms)
+            else:
+                current_ms = max(baseline_ms, current_ms - step_down_ms)
+
+            if current_ms != self._pipeline.buffer_ms:
+                self._pipeline.set_buffer_ms(current_ms)
+                _LOGGER.debug(
+                    "Latence adaptative : tampon ajusté à %d ms (incidents=%d, base=%d ms)",
+                    current_ms,
+                    incidents,
+                    baseline_ms,
+                )
 
     async def _calculate_backoff_and_wait(self) -> None:
         """Calcule un délai de backoff exponentiel avec gigue (jitter) et attend."""
@@ -288,6 +347,8 @@ class Supervisor:
 
         self._metrics_logger = MetricsLogger(get_current_metrics, interval_seconds=30.0)
         self._metrics_logger.start()
+
+        self._adaptive_task = asyncio.create_task(self._adaptive_latency_loop())
 
         try:
             while not self._stop_requested:
@@ -367,6 +428,8 @@ class Supervisor:
 
         finally:
             self._set_state(State.STOPPED)
+            if self._adaptive_task and not self._adaptive_task.done():
+                self._adaptive_task.cancel()
             if self._volume_watcher:
                 self._volume_watcher.stop()
                 self._volume_watcher = None

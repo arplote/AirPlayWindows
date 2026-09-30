@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
 import logging
 import sys
 from pathlib import Path
@@ -17,6 +18,35 @@ from airplay_sender import __version__
 from airplay_sender.cli import cmd_diag, cmd_gui, cmd_pair, cmd_run, cmd_scan, cmd_tray
 from airplay_sender.config import load_config
 from airplay_sender.logging_setup import setup_logging
+
+_LOGGER = logging.getLogger("airplay_sender.main")
+
+
+def _raise_windows_timer_resolution() -> bool:
+    """Force la granularité du timer Windows à 1 ms (au lieu de ~15.6 ms par défaut).
+
+    Le pacing des paquets RTP AirPlay/RAOP repose sur de petits `asyncio.sleep()`
+    (quelques ms) : avec la granularité par défaut de Windows, ces attentes peuvent
+    déraper de plusieurs ms, ce qui introduit de la gigue dans l'envoi des paquets.
+    Renvoie True si l'appel a réussi (à faire correspondre avec `timeEndPeriod`).
+    """
+    if sys.platform != "win32":
+        return False
+    try:
+        winmm = ctypes.WinDLL("winmm")
+        return winmm.timeBeginPeriod(1) == 0  # TIMERR_NOERROR
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.debug("Impossible d'ajuster la résolution du timer Windows : %s", exc)
+        return False
+
+
+def _restore_windows_timer_resolution() -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.WinDLL("winmm").timeEndPeriod(1)
+    except Exception as exc:  # noqa: BLE001
+        _LOGGER.debug("Erreur lors de la restauration du timer Windows : %s", exc)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -162,22 +192,29 @@ def main() -> int:
     # Chargement de la configuration
     config = load_config(args.config)
 
-    if not args.subcommand or args.subcommand == "gui":
-        # Par défaut (double-clic ou sous-commande 'gui'), lancer l'interface graphique complète
-        return cmd_gui(args, config)
+    # Réduction de la gigue de pacing RTP : granularité du timer Windows à 1 ms
+    # pendant toute la durée de vie du processus (restaurée à la sortie).
+    timer_raised = _raise_windows_timer_resolution()
+    try:
+        if not args.subcommand or args.subcommand == "gui":
+            # Par défaut (double-clic ou sous-commande 'gui'), lancer l'interface graphique complète
+            return cmd_gui(args, config)
 
-    if args.subcommand == "scan":
-        return asyncio.run(cmd_scan(args, config))
-    elif args.subcommand == "pair":
-        return asyncio.run(cmd_pair(args, config))
-    elif args.subcommand == "run":
-        return asyncio.run(cmd_run(args, config))
-    elif args.subcommand == "diag":
-        return asyncio.run(cmd_diag(args, config))
-    elif args.subcommand == "tray":
-        return cmd_tray(args, config)
+        if args.subcommand == "scan":
+            return asyncio.run(cmd_scan(args, config))
+        elif args.subcommand == "pair":
+            return asyncio.run(cmd_pair(args, config))
+        elif args.subcommand == "run":
+            return asyncio.run(cmd_run(args, config))
+        elif args.subcommand == "diag":
+            return asyncio.run(cmd_diag(args, config))
+        elif args.subcommand == "tray":
+            return cmd_tray(args, config)
 
-    return 0
+        return 0
+    finally:
+        if timer_raised:
+            _restore_windows_timer_resolution()
 
 
 if __name__ == "__main__":

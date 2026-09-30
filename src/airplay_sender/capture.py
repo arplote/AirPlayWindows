@@ -87,9 +87,14 @@ def find_loopback_device(
 
     # 1. Privilégier le câble virtuel si demandé (permet le son dédié à l'enceinte avec PC muet)
     if prefer_virtual:
-        for dev in devices:
-            if dev["is_virtual"]:
+        virtual = [dev for dev in devices if dev["is_virtual"]]
+        # VB-CABLE ("CABLE Input") est celui que l'UI demande de choisir ; les autres
+        # périphériques virtuels (ex. Voicemeeter) ne reçoivent rien par défaut.
+        for dev in virtual:
+            if "cable input" in dev["name"].lower():
                 return dev
+        if virtual:
+            return virtual[0]
 
     # 2. Utiliser la sortie système par défaut (mode miroir)
     for dev in devices:

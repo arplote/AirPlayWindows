@@ -53,7 +53,7 @@ class AudioPipeline:
         in_channels: int = 2,
         out_rate: int = 44100,
         out_channels: int = 2,
-        buffer_ms: int = 80,
+        buffer_ms: int = 100,
     ) -> None:
         self.in_rate = in_rate
         self.in_channels = in_channels
@@ -67,7 +67,7 @@ class AudioPipeline:
 
         # Dimensionnement du ring buffer (faible latence temps réel)
         self.target_buffer_bytes = int(self.buffer_ms * self.out_bytes_per_ms)
-        self.max_buffer_bytes = int(self.target_buffer_bytes * 1.5)
+        self.max_buffer_bytes = int(self.target_buffer_bytes * 2.0)
 
         self._lock = threading.Lock()
         self._buffer = bytearray()
@@ -231,7 +231,7 @@ class AudioPipeline:
         with self._lock:
             self.buffer_ms = max(30, buffer_ms)
             self.target_buffer_bytes = int(self.buffer_ms * self.out_bytes_per_ms)
-            self.max_buffer_bytes = int(self.target_buffer_bytes * 1.5)
+            self.max_buffer_bytes = int(self.target_buffer_bytes * 2.0)
             # Si le buffer actuel dépasse la nouvelle limite, tailler immédiatement
             if len(self._buffer) > self.max_buffer_bytes:
                 drop_bytes = len(self._buffer) - self.target_buffer_bytes

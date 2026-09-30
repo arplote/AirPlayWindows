@@ -28,6 +28,7 @@ from airplay_sender.config import AppConfig, DeviceConfig, save_config
 from airplay_sender.diagnostics import generate_diagnostic_report
 from airplay_sender.icons import get_icon
 from airplay_sender.logging_setup import get_default_log_dir
+from airplay_sender.mmcss import disable_mmcss, enable_mmcss
 from airplay_sender.single_instance import SingleInstance
 from airplay_sender.supervisor import State, Supervisor
 
@@ -125,11 +126,13 @@ class TrayApp:
         return 0
 
     def _run_asyncio_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """Exécute la boucle d'événements asyncio jusqu'à l'arrêt."""
+        """Exécute la boucle d'événements asyncio jusqu'à l'arrêt (pacing RTP inclus)."""
         asyncio.set_event_loop(loop)
+        mmcss_handle = enable_mmcss("Pro Audio")
         try:
             loop.run_forever()
         finally:
+            disable_mmcss(mmcss_handle)
             loop.close()
 
     def _create_menu(self) -> Menu:
