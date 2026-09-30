@@ -12,13 +12,14 @@ from airplay_sender.supervisor import State
 
 
 @pytest.fixture(scope="module")
-def gui_app():
+def gui_app(tmp_path_factory: pytest.TempPathFactory):
     """Crée une instance unique d'AirPlayGUI pour les tests du module."""
     config = AppConfig(
         device=DeviceConfig(name="Phantom II Test", last_known_ip="192.168.1.42"),
     )
+    test_cfg_path = tmp_path_factory.mktemp("cfg") / "gui_config.json"
     with patch("pystray.Icon"):
-        app = AirPlayGUI(config, start_minimized=True)
+        app = AirPlayGUI(config, config_path=test_cfg_path, start_minimized=True)
         yield app
         try:
             app.root.destroy()
@@ -86,3 +87,11 @@ def test_gui_device_selection(gui_app: AirPlayGUI) -> None:
     gui_app._select_device("Salon Phantom")
     assert gui_app.target_name == "Salon Phantom"
     assert gui_app.config.device.name == "Salon Phantom"
+
+
+def test_gui_latency_profile_selection(gui_app: AirPlayGUI) -> None:
+    """Vérifie le changement de profil de latence."""
+    gui_app.latency_combo.current(1)  # 350 ms
+    gui_app._on_latency_profile_changed()
+    assert gui_app.config.audio.buffer_ms == 100
+    assert gui_app.config.audio.raop_latency_ms == 350

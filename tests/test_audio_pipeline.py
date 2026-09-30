@@ -44,6 +44,18 @@ def test_pipeline_overflow_policy() -> None:
     assert len(pipeline._buffer) <= max_bytes
 
 
+def test_pipeline_set_buffer_ms() -> None:
+    """Vérifie le redimensionnement dynamique du tampon."""
+    pipeline = AudioPipeline(in_rate=44100, in_channels=2, out_rate=44100, buffer_ms=200)
+    data = b"\x01\x00\x02\x00" * 4000
+    pipeline.push(data)
+    assert pipeline.level_ms > 50
+
+    pipeline.set_buffer_ms(40)
+    assert pipeline.buffer_ms == 40
+    assert len(pipeline._buffer) <= pipeline.max_buffer_bytes
+
+
 def test_pipeline_resampling_1khz_fft() -> None:
     """Vérifie le rééchantillonnage 48 kHz -> 44.1 kHz avec analyse spectrale FFT.
 

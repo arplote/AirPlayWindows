@@ -33,6 +33,10 @@ if (-not (Test-Path $IconPath)) {
     Write-Host "[1/3] Icône assets/icon.ico présente." -ForegroundColor Green
 }
 
+# Arrêt des instances actives pour déverrouiller dist\
+Get-Process -Name "AirPlaySender" -ErrorAction SilentlyContinue | Stop-Process -Force
+Start-Sleep -Milliseconds 500
+
 # 2. Préparation des arguments PyInstaller
 Write-Host "[2/3] Configuration des paramètres PyInstaller..." -ForegroundColor Yellow
 

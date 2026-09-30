@@ -22,7 +22,7 @@ from airplay_sender.audio_pipeline import AudioPipeline
 from airplay_sender.capture import LoopbackCapture
 from airplay_sender.devices_watch import AudioDeviceWatcher
 from airplay_sender.metrics import MetricsLogger, SessionMetrics
-from airplay_sender.streamer import AirPlayStreamer
+from airplay_sender.streamer import AirPlayStreamer, set_raop_latency_ms
 
 _LOGGER = logging.getLogger("airplay_sender.supervisor")
 
@@ -45,7 +45,8 @@ class Supervisor:
     def __init__(
         self,
         target_name: str,
-        buffer_ms: int = 800,
+        buffer_ms: int = 80,
+        raop_latency_ms: int = 250,
         volume: float | None = None,
         credentials: str | None = None,
         on_state_change: Callable[[State], None] | None = None,
@@ -53,10 +54,13 @@ class Supervisor:
     ) -> None:
         self.target_name = target_name
         self.buffer_ms = buffer_ms
+        self.raop_latency_ms = raop_latency_ms
         self.volume = volume
         self.credentials = credentials
         self.on_state_change = on_state_change
         self._sleep = sleep_func or asyncio.sleep
+
+        set_raop_latency_ms(self.raop_latency_ms)
 
         self._state: State = State.IDLE
         self._stop_requested = False
@@ -123,6 +127,15 @@ class Supervisor:
         self._switch_device_requested = new_name
         if self._stream_task and not self._stream_task.done():
             self._stream_task.cancel()
+
+    def set_latency(self, buffer_ms: int, raop_latency_ms: int) -> None:
+        """Modifie les paramètres de latence et les applique au pipeline et au streamer."""
+        self.buffer_ms = buffer_ms
+        self.raop_latency_ms = raop_latency_ms
+        set_raop_latency_ms(raop_latency_ms)
+        if self._pipeline:
+            self._pipeline.set_buffer_ms(buffer_ms)
+        self.metrics.estimated_latency_ms = float(buffer_ms + raop_latency_ms)
 
     async def set_volume(self, level: float) -> None:
         """Modifie le niveau de volume (0.0 à 1.0) sur l'enceinte active."""

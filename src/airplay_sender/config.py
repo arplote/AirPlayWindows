@@ -38,7 +38,8 @@ class CredentialsConfig(BaseModel):
 class AudioConfig(BaseModel):
     """Paramètres du pipeline audio."""
 
-    buffer_ms: int = Field(default=800, ge=100, le=5000)
+    buffer_ms: int = Field(default=80, ge=30, le=5000)
+    raop_latency_ms: int = Field(default=250, ge=100, le=2000)
     target_samplerate: int = Field(default=44100)
     capture_device: str = "default-loopback"
 
@@ -115,6 +116,16 @@ def load_config(path: Path | None = None) -> AppConfig:
     try:
         content = config_path.read_text(encoding="utf-8")
         data: dict[str, Any] = json.loads(content)
+        # Migration automatique de l'ancienne valeur buffer_ms=800 vers la faible latence
+        if isinstance(data, dict):
+            audio = data.get("audio", {})
+            if (
+                isinstance(audio, dict)
+                and audio.get("buffer_ms") == 800
+                and "raop_latency_ms" not in audio
+            ):
+                audio["buffer_ms"] = 80
+                audio["raop_latency_ms"] = 250
         return AppConfig.model_validate(data)
     except Exception as exc:
         _LOGGER.warning(

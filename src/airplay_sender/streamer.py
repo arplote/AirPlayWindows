@@ -16,11 +16,40 @@ from pyatv.const import Protocol
 from pyatv.interface import AppleTV, BaseConfig, MediaMetadata
 from pyatv.protocols.raop import audio_source
 from pyatv.protocols.raop.audio_source import AudioSource, _to_audio_samples
+from pyatv.protocols.raop.protocols import StreamContext
 from pyatv.support.metadata import EMPTY_METADATA
 
 from airplay_sender.audio_pipeline import AudioPipeline
 
 _LOGGER = logging.getLogger("airplay_sender.streamer")
+
+# Configuration de la latence RAOP (en ms et frames à 44.1 kHz)
+DEFAULT_RAOP_LATENCY_MS = 250
+DEFAULT_RAOP_LATENCY_FRAMES = int(DEFAULT_RAOP_LATENCY_MS * 44.1)
+
+# Patch de StreamContext pour forcer la faible latence (250 ms au lieu de 1500 ms)
+_orig_stream_context_reset = StreamContext.reset
+
+
+def _patched_stream_context_reset(self: StreamContext) -> None:
+    _orig_stream_context_reset(self)
+    self.latency = getattr(self, "custom_latency_frames", DEFAULT_RAOP_LATENCY_FRAMES)
+
+
+StreamContext.reset = _patched_stream_context_reset  # type: ignore[method-assign]
+
+
+def set_raop_latency_ms(latency_ms: int) -> None:
+    """Modifie la latence matérielle AirPlay/RAOP négociée avec le récepteur."""
+    global DEFAULT_RAOP_LATENCY_MS, DEFAULT_RAOP_LATENCY_FRAMES
+    DEFAULT_RAOP_LATENCY_MS = max(100, latency_ms)
+    DEFAULT_RAOP_LATENCY_FRAMES = max(4410, int(DEFAULT_RAOP_LATENCY_MS * 44.1))
+    _LOGGER.info(
+        "Latence RAOP définie à %d ms (%d frames)",
+        DEFAULT_RAOP_LATENCY_MS,
+        DEFAULT_RAOP_LATENCY_FRAMES,
+    )
+
 
 # Patch transparent de pyatv pour accepter un AudioSource personnalisé dans stream_file
 _orig_open_source = audio_source.open_source
@@ -45,11 +74,17 @@ class PipelineAudioSource(AudioSource):
         self._channels = 2
         self._sample_size = 2  # 16-bit
         self._is_stopped = False
+        self._first_read = True
 
     async def readframes(self, nframes: int) -> bytes:
         """Lit nframes audio (généralement 352 frames = 1408 octets à 44.1 kHz)."""
         if self._is_stopped:
             return b""
+
+        if self._first_read:
+            # Purge immédiate de tout résidu de buffer accumulé pendant la négociation RTSP
+            self.pipeline.clear()
+            self._first_read = False
 
         nbytes = nframes * self._channels * self._sample_size
         # pull() renvoie toujours nbytes (produit du silence si le système est muet)

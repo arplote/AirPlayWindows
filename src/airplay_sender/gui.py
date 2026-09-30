@@ -292,6 +292,15 @@ class AirPlayGUI:
         )
         self.lbl_audio_hint.pack(side=tk.RIGHT)
 
+        lbl_echo_tip = tk.Label(
+            audio_inner,
+            text="💡 Astuce : Baissez ou coupez le son de votre PC pour éviter l'écho acoustique.",
+            font=("Segoe UI", 8, "italic"),
+            bg="#FFFFFF",
+            fg="#64748B",
+        )
+        lbl_echo_tip.pack(anchor="w", pady=(6, 0))
+
         # -------------------------------------------------------------
         # CARTE 3 : ENCEINTE CIBLE
         # -------------------------------------------------------------
@@ -436,7 +445,42 @@ class AirPlayGUI:
             fg="#1E293B",
             activebackground="#FFFFFF",
         )
-        chk_min_tray.pack(anchor="w")
+        chk_min_tray.pack(anchor="w", pady=(0, 6))
+
+        # Choix du profil de latence
+        latency_row = tk.Frame(opts_inner, bg="#FFFFFF")
+        latency_row.pack(fill=tk.X, pady=(2, 6))
+
+        tk.Label(
+            latency_row,
+            text="Profil de latence :",
+            font=("Segoe UI", 9, "bold"),
+            bg="#FFFFFF",
+            fg="#1E293B",
+        ).pack(side=tk.LEFT)
+
+        self.latency_combo = ttk.Combobox(
+            latency_row,
+            values=[
+                "⚡ Ultra-faible (250 ms - Recommandé)",
+                "⚖️ Équilibré (350 ms)",
+                "🛡️ Haute stabilité (800 ms)",
+            ],
+            state="readonly",
+            font=("Segoe UI", 8),
+            width=32,
+        )
+        # Sélection du profil actuel
+        cur_raop = getattr(self.config.audio, "raop_latency_ms", 250)
+        if cur_raop <= 250:
+            self.latency_combo.current(0)
+        elif cur_raop <= 450:
+            self.latency_combo.current(1)
+        else:
+            self.latency_combo.current(2)
+
+        self.latency_combo.pack(side=tk.RIGHT)
+        self.latency_combo.bind("<<ComboboxSelected>>", self._on_latency_profile_changed)
 
         tools_row = tk.Frame(opts_inner, bg="#FFFFFF")
         tools_row.pack(fill=tk.X, pady=(8, 0))
@@ -652,6 +696,26 @@ class AirPlayGUI:
         if self.tray_icon:
             self.tray_icon.update_menu()
 
+    def _on_latency_profile_changed(self, _event: Any = None) -> None:
+        """Applique le nouveau profil de latence sélectionné."""
+        idx = self.latency_combo.current()
+        if idx == 0:
+            buf_ms, raop_ms = 80, 250
+        elif idx == 1:
+            buf_ms, raop_ms = 100, 350
+        else:
+            buf_ms, raop_ms = 150, 750
+
+        self.config.audio.buffer_ms = buf_ms
+        self.config.audio.raop_latency_ms = raop_ms
+        save_config(self.config, self.config_path)
+
+        if self.supervisor:
+            self.supervisor.set_latency(buf_ms, raop_ms)
+        _LOGGER.info(
+            "Profil de latence appliqué : buffer=%d ms, raop=%d ms", buf_ms, raop_ms
+        )
+
     def _tick_audio_meter(self) -> None:
         """Mise à jour en continu (20 FPS) du Vu-mètre audio et des informations de flux."""
         try:
@@ -669,7 +733,10 @@ class AirPlayGUI:
 
                 if self.supervisor.pipeline:
                     lvl_ms = int(self.supervisor.pipeline.level_ms)
-                    self.lbl_buffer_info.config(text=f"Tampon : {lvl_ms} ms")
+                    lat_est = int(self.supervisor.raop_latency_ms + lvl_ms)
+                    self.lbl_buffer_info.config(
+                        text=f"Tampon : {lvl_ms} ms | Latence est. : ~{lat_est} ms"
+                    )
             else:
                 self.vu_bar["value"] = 0
                 if self.current_state == State.CONNECTING:
@@ -769,6 +836,7 @@ class AirPlayGUI:
         self.supervisor = Supervisor(
             target_name=self.target_name,
             buffer_ms=self.config.audio.buffer_ms,
+            raop_latency_ms=getattr(self.config.audio, "raop_latency_ms", 250),
             volume=self.current_volume,
             credentials=self.config.credentials.raop or None,
             on_state_change=self._on_state_change,

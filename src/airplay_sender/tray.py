@@ -244,6 +244,7 @@ class TrayApp:
         self.supervisor = Supervisor(
             target_name=self.target_name,
             buffer_ms=self.config.audio.buffer_ms,
+            raop_latency_ms=getattr(self.config.audio, "raop_latency_ms", 250),
             volume=self.current_volume,
             credentials=self.config.credentials.raop or None,
             on_state_change=self._on_state_change,
