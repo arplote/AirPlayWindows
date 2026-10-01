@@ -23,6 +23,7 @@ from airplay_sender.capture import LoopbackCapture
 from airplay_sender.devices_watch import AudioDeviceWatcher
 from airplay_sender.metrics import LoopLagMonitor, MetricsLogger, SessionMetrics
 from airplay_sender.mmcss import disable_mmcss, enable_mmcss
+from airplay_sender.power import PowerNotifier
 from airplay_sender.streamer import (
     LOSS_STATS,
     PACING_STATS,
@@ -48,6 +49,9 @@ class State(str, Enum):
 
 class Supervisor:
     """Machine d'états de supervision résiliente pour la diffusion AirPlay."""
+
+    # Délai après la reprise de Windows avant de se reconnecter (retour du Wi-Fi/DHCP)
+    RESUME_SETTLE_SEC = 3.0
 
     def __init__(
         self,
@@ -79,6 +83,9 @@ class Supervisor:
         self._state: State = State.IDLE
         self._stop_requested = False
         self._switch_device_requested: str | None = None
+        self._suspended = False
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._power_notifier: PowerNotifier | None = None
 
         # Composants internes
         self._capture: LoopbackCapture | None = None
@@ -199,6 +206,49 @@ class Supervisor:
             new_device_info.get("name"),
         )
         self._restart_capture()
+
+    def _on_power_suspend(self) -> None:
+        """Appelé depuis un thread système à l'entrée en veille de Windows."""
+        if self._loop and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._enter_suspend)
+
+    def _on_power_resume(self) -> None:
+        """Appelé depuis un thread système à la reprise de Windows."""
+        if self._loop and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._exit_suspend)
+
+    def _enter_suspend(self) -> None:
+        if self._suspended:
+            return
+        _LOGGER.info("Mise en veille de Windows : arrêt du streaming et de la capture.")
+        self._suspended = True
+        if self._stream_task and not self._stream_task.done():
+            self._stream_task.cancel()
+
+    def _exit_suspend(self) -> None:
+        if not self._suspended:
+            return
+        _LOGGER.info("Reprise de Windows : reconnexion dans %.0f s.", self.RESUME_SETTLE_SEC)
+        self._suspended = False
+
+    async def _pause_for_suspend(self) -> None:
+        """Libère connexion et capture pendant la veille, puis laisse le réseau revenir."""
+        self._set_state(State.RECONNECTING)
+        await self._streamer.close()
+        self._stop_capture()
+        while self._suspended and not self._stop_requested:
+            await asyncio.sleep(0.5)
+        if not self._stop_requested:
+            await asyncio.sleep(self.RESUME_SETTLE_SEC)
+
+    def _stop_capture(self) -> None:
+        """Arrête le thread d'alimentation et ferme le flux de capture."""
+        self._feeder_stop_event.set()
+        if self._feeder_thread and self._feeder_thread.is_alive():
+            self._feeder_thread.join(timeout=1.0)
+        if self._capture:
+            self._capture.stop()
+            self._capture = None
 
     def _restart_capture(self) -> None:
         """Redémarre la capture audio sans interrompre la session AirPlay."""
@@ -368,8 +418,16 @@ class Supervisor:
 
         self._adaptive_task = asyncio.create_task(self._adaptive_latency_loop())
 
+        self._loop = loop
+        self._power_notifier = PowerNotifier(self._on_power_suspend, self._on_power_resume)
+        self._power_notifier.start()
+
         try:
             while not self._stop_requested:
+                if self._suspended:
+                    await self._pause_for_suspend()
+                    continue
+
                 if self._switch_device_requested:
                     self._switch_device_requested = None
                     self._consecutive_failures = 0
@@ -421,6 +479,9 @@ class Supervisor:
                     await self._calculate_backoff_and_wait()
                     continue
 
+                if self._suspended:
+                    continue  # veille entamée pendant la connexion : _pause_for_suspend la libère
+
                 # 3. ÉTAPE : PRÉPARATION DE LA CAPTURE & PIPELINE
                 self._restart_capture()
 
@@ -458,6 +519,9 @@ class Supervisor:
             if self._loop_lag_monitor:
                 self._loop_lag_monitor.stop()
                 self._loop_lag_monitor = None
+            if self._power_notifier:
+                self._power_notifier.stop()
+                self._power_notifier = None
             self._feeder_stop_event.set()
             if self._feeder_thread and self._feeder_thread.is_alive():
                 self._feeder_thread.join(timeout=1.0)
