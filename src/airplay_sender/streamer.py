@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Any, cast
 
 import pyatv
@@ -17,9 +18,11 @@ from pyatv.interface import AppleTV, BaseConfig, MediaMetadata
 from pyatv.protocols.raop import audio_source
 from pyatv.protocols.raop.audio_source import AudioSource, _to_audio_samples
 from pyatv.protocols.raop.protocols import StreamContext
+from pyatv.protocols.raop.stream_client import ControlClient, StreamClient
 from pyatv.support.metadata import EMPTY_METADATA
 
 from airplay_sender.audio_pipeline import AudioPipeline
+from airplay_sender.metrics import LossStats, PacingStats
 
 _LOGGER = logging.getLogger("airplay_sender.streamer")
 
@@ -63,6 +66,35 @@ async def _patched_open_source(source: Any, *args: Any, **kwargs: Any) -> AudioS
 
 audio_source.open_source = _patched_open_source
 raop.open_source = _patched_open_source
+
+
+# Mesure de la régularité d'envoi des paquets RTP (diagnostic des hachures audio)
+PACING_STATS = PacingStats()
+
+_orig_send_packet = StreamClient._send_packet
+
+
+async def _timed_send_packet(self: StreamClient, *args: Any, **kwargs: Any) -> int:
+    num_sent = await _orig_send_packet(self, *args, **kwargs)
+    if num_sent:
+        PACING_STATS.record(time.perf_counter())
+    return num_sent
+
+
+StreamClient._send_packet = _timed_send_packet  # type: ignore[method-assign]
+
+# Pertes réseau : le récepteur demande la retransmission des paquets RTP manquants
+LOSS_STATS = LossStats()
+
+_orig_retransmit = ControlClient._retransmit_lost_packets
+
+
+def _counted_retransmit(self: ControlClient, request: Any, addr: Any) -> None:
+    LOSS_STATS.record(int(request.lost_packets), time.perf_counter())
+    _orig_retransmit(self, request, addr)
+
+
+ControlClient._retransmit_lost_packets = _counted_retransmit  # type: ignore[method-assign]
 
 
 class PipelineAudioSource(AudioSource):
@@ -174,6 +206,8 @@ class AirPlayStreamer:
 
         self._current_source = PipelineAudioSource(pipeline, sample_rate=pipeline.out_rate)
         self._is_streaming = True
+        PACING_STATS.reset()
+        LOSS_STATS.reset()
         _LOGGER.info("Démarrage du flux AirPlay en direct...")
 
         try:

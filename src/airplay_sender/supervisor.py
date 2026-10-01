@@ -21,9 +21,14 @@ from pyatv.interface import BaseConfig
 from airplay_sender.audio_pipeline import AudioPipeline
 from airplay_sender.capture import LoopbackCapture
 from airplay_sender.devices_watch import AudioDeviceWatcher
-from airplay_sender.metrics import MetricsLogger, SessionMetrics
+from airplay_sender.metrics import LoopLagMonitor, MetricsLogger, SessionMetrics
 from airplay_sender.mmcss import disable_mmcss, enable_mmcss
-from airplay_sender.streamer import AirPlayStreamer, set_raop_latency_ms
+from airplay_sender.streamer import (
+    LOSS_STATS,
+    PACING_STATS,
+    AirPlayStreamer,
+    set_raop_latency_ms,
+)
 from airplay_sender.windows_volume import WindowsVolumeWatcher
 
 _LOGGER = logging.getLogger("airplay_sender.supervisor")
@@ -85,6 +90,7 @@ class Supervisor:
         self._volume_watcher: WindowsVolumeWatcher | None = None
         self._stream_task: asyncio.Task[None] | None = None
         self._metrics_logger: MetricsLogger | None = None
+        self._loop_lag_monitor: LoopLagMonitor | None = None
         self.metrics = SessionMetrics()
 
         # Paramètres de backoff
@@ -343,7 +349,19 @@ class Supervisor:
                 self.metrics.total_overflows = self._pipeline.stats.overflows
                 self.metrics.total_silence_bytes = self._pipeline.stats.silence_bytes_generated
                 self.metrics.record_buffer_level(self._pipeline.level_ms)
+            self.metrics.pacing_summary = PACING_STATS.snapshot_and_reset()
+            self.metrics.loss_summary = LOSS_STATS.snapshot_and_reset()
+            if self._loop_lag_monitor:
+                self.metrics.loop_lag_summary = self._loop_lag_monitor.snapshot_and_reset()
             return self.metrics
+
+        def stall_context() -> str:
+            level = f"buffer={self._pipeline.level_ms:.0f}ms, " if self._pipeline else ""
+            return f"{level}underruns={self.metrics.total_underruns}"
+
+        PACING_STATS.context_func = stall_context
+        self._loop_lag_monitor = LoopLagMonitor(stall_context)
+        self._loop_lag_monitor.start()
 
         self._metrics_logger = MetricsLogger(get_current_metrics, interval_seconds=30.0)
         self._metrics_logger.start()
@@ -437,6 +455,9 @@ class Supervisor:
                 self._device_watcher.stop()
             if self._metrics_logger:
                 self._metrics_logger.stop()
+            if self._loop_lag_monitor:
+                self._loop_lag_monitor.stop()
+                self._loop_lag_monitor = None
             self._feeder_stop_event.set()
             if self._feeder_thread and self._feeder_thread.is_alive():
                 self._feeder_thread.join(timeout=1.0)
