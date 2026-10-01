@@ -71,6 +71,10 @@ class AudioPipeline:
 
         self._lock = threading.Lock()
         self._buffer = bytearray()
+        # Préremplissage (jitter buffer) : tant que le tampon n'a pas atteint sa cible,
+        # pull() joue du silence, pour que le niveau se stabilise autour de buffer_ms
+        # au lieu de rester proche de zéro (où le moindre retard de capture s'entend).
+        self._primed = False
         self._volume_scale: float = 1.0
         self.stats = PipelineStats()
 
@@ -180,30 +184,36 @@ class AudioPipeline:
         """Extrait nbytes du buffer.
 
         Renvoie TOUJOURS exactement nbytes.
-        Si le buffer est insuffisant ou vide, produit du silence (zéros).
+        Tant que le tampon n'a pas atteint sa cible (démarrage, ou après un underrun),
+        produit du silence (zéros) sans consommer les données : c'est le préremplissage.
+        Si le tampon s'épuise en cours de lecture, complète avec du silence (underrun).
         """
         if nbytes <= 0:
             return b""
 
         with self._lock:
             available = len(self._buffer)
-            if available >= nbytes:
+            if not self._primed and available >= self.target_buffer_bytes:
+                self._primed = True
+
+            if not self._primed:
+                # Préremplissage ou re-remplissage après incident : silence en attendant
+                chunk = b"\x00" * nbytes
+                self.stats.silence_bytes_generated += nbytes
+            elif available >= nbytes:
                 # Tampon suffisant : lecture normale
                 chunk = bytes(self._buffer[:nbytes])
                 del self._buffer[:nbytes]
-            elif available > 0:
-                # Tampon partiel : données restantes complétées par du silence
+            else:
+                # Underrun : données restantes complétées par du silence, puis retour en
+                # préremplissage pour rétablir la marge plutôt que de retomber à sec
                 chunk = bytes(self._buffer)
                 del self._buffer[:]
                 missing = nbytes - available
                 chunk += b"\x00" * missing
                 self.stats.underruns += 1
                 self.stats.silence_bytes_generated += missing
-            else:
-                # Tampon vide (silence système) : génération continue de zéros
-                chunk = b"\x00" * nbytes
-                self.stats.underruns += 1
-                self.stats.silence_bytes_generated += nbytes
+                self._primed = False
 
             lvl = len(self._buffer) / self.out_bytes_per_ms
             self.stats.current_level_ms = lvl
@@ -222,6 +232,7 @@ class AudioPipeline:
         """Vide le buffer et réinitialise le filtre de rééchantillonnage."""
         with self._lock:
             self._buffer.clear()
+            self._primed = False
             if self._resampler is not None:
                 self._resampler.clear()
             self._level_history.clear()
