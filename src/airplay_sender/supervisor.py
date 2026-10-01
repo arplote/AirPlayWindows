@@ -23,6 +23,7 @@ from airplay_sender.capture import LoopbackCapture
 from airplay_sender.devices_watch import AudioDeviceWatcher
 from airplay_sender.metrics import LoopLagMonitor, MetricsLogger, SessionMetrics
 from airplay_sender.mmcss import disable_mmcss, enable_mmcss
+from airplay_sender.netprobe import NetworkProbe
 from airplay_sender.power import PowerNotifier
 from airplay_sender.streamer import (
     LOSS_STATS,
@@ -86,6 +87,7 @@ class Supervisor:
         self._suspended = False
         self._loop: asyncio.AbstractEventLoop | None = None
         self._power_notifier: PowerNotifier | None = None
+        self._network_probe = NetworkProbe()
 
         # Composants internes
         self._capture: LoopbackCapture | None = None
@@ -401,6 +403,7 @@ class Supervisor:
                 self.metrics.record_buffer_level(self._pipeline.level_ms)
             self.metrics.pacing_summary = PACING_STATS.snapshot_and_reset()
             self.metrics.loss_summary = LOSS_STATS.snapshot_and_reset()
+            self.metrics.network_summary = self._network_probe.snapshot_and_reset()
             if self._loop_lag_monitor:
                 self.metrics.loop_lag_summary = self._loop_lag_monitor.snapshot_and_reset()
             return self.metrics
@@ -471,6 +474,7 @@ class Supervisor:
                     except Exception as vol_exc:  # noqa: BLE001
                         _LOGGER.debug("Initialisation du volume matériel : %s", vol_exc)
                     self._consecutive_failures = 0
+                    self._network_probe.start(str(target_device.address))
                 except Exception as conn_exc:  # noqa: BLE001
                     _LOGGER.error("Échec de connexion à '%s' : %s", target_device.name, conn_exc)
                     self._consecutive_failures += 1
@@ -522,6 +526,10 @@ class Supervisor:
             if self._power_notifier:
                 self._power_notifier.stop()
                 self._power_notifier = None
+            self._network_probe.stop()
+            report = self._network_probe.session_report()
+            if report:
+                _LOGGER.info(report)
             self._feeder_stop_event.set()
             if self._feeder_thread and self._feeder_thread.is_alive():
                 self._feeder_thread.join(timeout=1.0)

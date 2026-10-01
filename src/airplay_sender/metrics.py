@@ -163,6 +163,7 @@ class SessionMetrics:
     pacing_summary: str = ""
     loop_lag_summary: str = ""
     loss_summary: str = ""
+    network_summary: str = ""
 
     @property
     def uptime_seconds(self) -> float:
@@ -224,6 +225,8 @@ class MetricsLogger:
                 await asyncio.sleep(self.interval)
                 metrics = self.get_metrics()
                 _LOGGER.info(metrics.format_summary())
+                if metrics.network_summary:
+                    _LOGGER.info(metrics.network_summary)
             except asyncio.CancelledError:
                 break
             except Exception as exc:  # noqa: BLE001
