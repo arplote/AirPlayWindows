@@ -43,6 +43,10 @@ class AudioConfig(BaseModel):
     target_samplerate: int = Field(default=44100)
     capture_device: str = "default-loopback"
     prefer_virtual_cable: bool = True
+    # Sortie audio Windows choisie depuis l'application : capturer la même sortie, et
+    # remettre la sortie d'origine à la fermeture (sinon le son du PC resterait sur le câble)
+    link_capture_to_output: bool = True
+    restore_output_on_exit: bool = True
 
     @field_validator("target_samplerate")
     @classmethod

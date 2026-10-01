@@ -25,6 +25,12 @@ import pystray
 from pystray import Menu, MenuItem
 
 from airplay_sender import __version__
+from airplay_sender.audio_output import (
+    OutputDevice,
+    get_default_output,
+    list_output_devices,
+    set_default_output,
+)
 from airplay_sender.autostart import disable_autostart, enable_autostart, is_autostart_enabled
 from airplay_sender.config import AppConfig, DeviceConfig, save_config
 from airplay_sender.diagnostics import generate_diagnostic_report
@@ -74,6 +80,9 @@ class AirPlayGUI:
         self._is_scanning = False
         self._volume_update_job: str | None = None
         self._toast_shown_once = False
+        self._output_devices: list[OutputDevice] = []
+        # Sortie Windows d'origine, mémorisée au premier changement depuis l'application
+        self._original_output_id: str | None = None
 
         # Imports Tkinter
         import tkinter as tk
@@ -498,6 +507,53 @@ class AirPlayGUI:
         self.latency_combo.pack(side=tk.RIGHT)
         self.latency_combo.bind("<<ComboboxSelected>>", self._on_latency_profile_changed)
 
+        output_row = tk.Frame(opts_inner, bg="#FFFFFF")
+        output_row.pack(fill=tk.X, pady=(2, 2))
+
+        tk.Label(
+            output_row,
+            text="Sortie audio de Windows :",
+            font=("Segoe UI", 9, "bold"),
+            bg="#FFFFFF",
+            fg="#1E293B",
+        ).pack(side=tk.LEFT)
+
+        self.output_combo = ttk.Combobox(
+            output_row,
+            state="readonly",
+            font=("Segoe UI", 8),
+            width=32,
+            postcommand=self._fill_output_combo,
+        )
+        self._fill_output_combo()
+        self._select_current_output()
+        self.output_combo.pack(side=tk.RIGHT)
+        self.output_combo.bind("<<ComboboxSelected>>", self._on_output_device_changed)
+
+        self.var_link_capture = tk.BooleanVar(value=self.config.audio.link_capture_to_output)
+        tk.Checkbutton(
+            opts_inner,
+            text="Capturer aussi cette sortie (routage en un seul choix)",
+            variable=self.var_link_capture,
+            command=self._on_toggle_link_capture,
+            font=("Segoe UI", 8),
+            bg="#FFFFFF",
+            fg="#1E293B",
+            activebackground="#FFFFFF",
+        ).pack(anchor="w")
+
+        self.var_restore_output = tk.BooleanVar(value=self.config.audio.restore_output_on_exit)
+        tk.Checkbutton(
+            opts_inner,
+            text="Restaurer la sortie d'origine à la fermeture",
+            variable=self.var_restore_output,
+            command=self._on_toggle_restore_output,
+            font=("Segoe UI", 8),
+            bg="#FFFFFF",
+            fg="#1E293B",
+            activebackground="#FFFFFF",
+        ).pack(anchor="w", pady=(0, 6))
+
         capture_row = tk.Frame(opts_inner, bg="#FFFFFF")
         capture_row.pack(fill=tk.X, pady=(2, 6))
 
@@ -740,6 +796,78 @@ class AirPlayGUI:
             disable_autostart()
         if self.tray_icon:
             self.tray_icon.update_menu()
+
+    def _fill_output_combo(self) -> None:
+        """Liste les sorties audio actives de Windows (rafraîchie à chaque ouverture)."""
+        try:
+            self._output_devices = list_output_devices()
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("Liste des sorties Windows indisponible : %s", exc)
+            self._output_devices = []
+        self.output_combo["values"] = [d.name for d in self._output_devices]
+
+    def _select_current_output(self) -> None:
+        """Affiche la sortie actuellement définie par défaut dans Windows."""
+        current = get_default_output()
+        if current:
+            self.output_combo.set(current.name)
+
+    def _on_output_device_changed(self, _event: Any = None) -> None:
+        """Définit la sortie audio par défaut de Windows et, si demandé, la capture associée."""
+        name = self.output_combo.get()
+        device = next((d for d in self._output_devices if d.name == name), None)
+        if device is None:
+            return
+
+        previous = get_default_output()
+        try:
+            set_default_output(device.id)
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.error("Impossible de changer la sortie audio de Windows : %s", exc)
+            self._select_current_output()
+            return
+
+        if self._original_output_id is None and previous is not None:
+            self._original_output_id = previous.id
+        _LOGGER.info("Sortie audio de Windows définie sur : %s", name)
+
+        if self.var_link_capture.get():
+            self._follow_capture_to_output(name)
+
+    def _follow_capture_to_output(self, output_name: str) -> None:
+        """Sélectionne dans la capture le loopback de la sortie qui vient d'être choisie."""
+        from airplay_sender.capture import list_wasapi_loopback_devices
+
+        try:
+            loopbacks = [d["name"] for d in list_wasapi_loopback_devices()]
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.debug("Liste des loopbacks indisponible : %s", exc)
+            return
+        match = next((n for n in loopbacks if n.startswith(output_name)), None)
+        if match is None:
+            _LOGGER.info("Aucune capture loopback correspondant à '%s'.", output_name)
+            return
+        self.capture_combo.set(match)
+        self._on_capture_device_changed()
+
+    def _on_toggle_link_capture(self) -> None:
+        self.config.audio.link_capture_to_output = self.var_link_capture.get()
+        save_config(self.config, self.config_path)
+
+    def _on_toggle_restore_output(self) -> None:
+        self.config.audio.restore_output_on_exit = self.var_restore_output.get()
+        save_config(self.config, self.config_path)
+
+    def _restore_windows_output(self) -> None:
+        """Remet la sortie Windows d'origine (si changée depuis l'appli et option activée)."""
+        original, self._original_output_id = self._original_output_id, None
+        if not original or not self.config.audio.restore_output_on_exit:
+            return
+        try:
+            set_default_output(original)
+            _LOGGER.info("Sortie audio de Windows d'origine restaurée.")
+        except Exception as exc:  # noqa: BLE001
+            _LOGGER.warning("Restauration de la sortie audio impossible : %s", exc)
 
     _CAPTURE_AUTO_LABEL = "Automatique (CABLE Input en priorité)"
 
@@ -1117,6 +1245,7 @@ class AirPlayGUI:
         """Arrête complètement l'application et ferme la fenêtre."""
         _LOGGER.info("Fermeture complète de l'application.")
         self._stop_streaming()
+        self._restore_windows_output()
         if self.tray_icon:
             self.tray_icon.stop()
         self.root.destroy()
@@ -1124,6 +1253,7 @@ class AirPlayGUI:
     def _shutdown(self) -> None:
         """Nettoie les threads et ressources."""
         self._stop_streaming()
+        self._restore_windows_output()
         if self.tray_icon:
             try:
                 self.tray_icon.stop()

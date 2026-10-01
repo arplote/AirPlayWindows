@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from airplay_sender.audio_output import OutputDevice
 from airplay_sender.config import AppConfig, DeviceConfig
 from airplay_sender.gui import AirPlayGUI
 from airplay_sender.supervisor import State
@@ -95,3 +96,75 @@ def test_gui_latency_profile_selection(gui_app: AirPlayGUI) -> None:
     gui_app._on_latency_profile_changed()
     assert gui_app.config.audio.buffer_ms == 100
     assert gui_app.config.audio.raop_latency_ms == 350
+
+
+def _fake_outputs() -> list[OutputDevice]:
+    return [
+        OutputDevice("id-spk", "Speakers (Test)"),
+        OutputDevice("id-cable", "CABLE Input (Test)"),
+    ]
+
+
+def test_gui_output_change_sets_windows_output_and_follows_capture(gui_app: AirPlayGUI) -> None:
+    """Choisir une sortie Windows la définit par défaut et sélectionne son loopback."""
+    gui_app._output_devices = _fake_outputs()
+    gui_app._original_output_id = None
+    gui_app.var_link_capture.set(True)
+    gui_app.output_combo.set("CABLE Input (Test)")
+    loopbacks = [{"name": "CABLE Input (Test) [Loopback]"}]
+
+    with (
+        patch("airplay_sender.gui.get_default_output", return_value=OutputDevice("id-spk", "S")),
+        patch("airplay_sender.gui.set_default_output") as set_output,
+        patch("airplay_sender.capture.list_wasapi_loopback_devices", return_value=loopbacks),
+    ):
+        gui_app._on_output_device_changed()
+
+    set_output.assert_called_once_with("id-cable")
+    assert gui_app._original_output_id == "id-spk"  # mémorisée pour la restauration
+    assert gui_app.config.audio.capture_device == "CABLE Input (Test) [Loopback]"
+
+
+def test_gui_output_change_without_link_keeps_capture(gui_app: AirPlayGUI) -> None:
+    gui_app._output_devices = _fake_outputs()
+    gui_app.var_link_capture.set(False)
+    gui_app.config.audio.capture_device = "default-loopback"
+    gui_app.output_combo.set("Speakers (Test)")
+
+    with (
+        patch("airplay_sender.gui.get_default_output", return_value=None),
+        patch("airplay_sender.gui.set_default_output"),
+    ):
+        gui_app._on_output_device_changed()
+
+    assert gui_app.config.audio.capture_device == "default-loopback"
+
+
+def test_gui_output_change_failure_keeps_state(gui_app: AirPlayGUI) -> None:
+    gui_app._output_devices = _fake_outputs()
+    gui_app._original_output_id = None
+    gui_app.output_combo.set("CABLE Input (Test)")
+
+    with (
+        patch("airplay_sender.gui.get_default_output", return_value=OutputDevice("id-spk", "S")),
+        patch("airplay_sender.gui.set_default_output", side_effect=OSError("refusé")),
+    ):
+        gui_app._on_output_device_changed()  # ne doit pas lever
+
+    assert gui_app._original_output_id is None
+
+
+def test_gui_restore_output_on_exit(gui_app: AirPlayGUI) -> None:
+    gui_app._original_output_id = "id-spk"
+    gui_app.config.audio.restore_output_on_exit = True
+    with patch("airplay_sender.gui.set_default_output") as set_output:
+        gui_app._restore_windows_output()
+        gui_app._restore_windows_output()  # idempotent
+
+    set_output.assert_called_once_with("id-spk")
+
+    gui_app._original_output_id = "id-spk"
+    gui_app.config.audio.restore_output_on_exit = False
+    with patch("airplay_sender.gui.set_default_output") as set_output:
+        gui_app._restore_windows_output()
+    set_output.assert_not_called()
