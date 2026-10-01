@@ -8,11 +8,18 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 from typing import Any, Self
 
 import pyaudiowpatch as pyaudio
 
 _LOGGER = logging.getLogger("airplay_sender.capture")
+
+# PortAudio n'est pas thread-safe pour Pa_Initialize/Pa_Terminate (compteur de références
+# global) ni pour l'ouverture/fermeture de flux. Sans exclusion mutuelle, le sondage du
+# périphérique (thread AudioDeviceWatcher, toutes les 2 s) peut croiser un redémarrage de
+# capture et corrompre le tas (crash 0xC0000374). Tout appel de ce type doit prendre ce verrou.
+PORTAUDIO_LOCK = threading.RLock()
 
 
 class AudioDeviceNotFoundError(Exception):
@@ -21,6 +28,11 @@ class AudioDeviceNotFoundError(Exception):
 
 def list_wasapi_loopback_devices() -> list[dict[str, Any]]:
     """Retourne la liste de tous les périphériques loopback WASAPI disponibles sur le système."""
+    with PORTAUDIO_LOCK:
+        return _list_wasapi_loopback_devices_locked()
+
+
+def _list_wasapi_loopback_devices_locked() -> list[dict[str, Any]]:
     devices: list[dict[str, Any]] = []
     pa = pyaudio.PyAudio()
     try:
@@ -204,6 +216,10 @@ class LoopbackCapture:
         if self._is_running:
             return
 
+        with PORTAUDIO_LOCK:
+            self._start_locked()
+
+    def _start_locked(self) -> None:
         self._pa = pyaudio.PyAudio()
         # Vider la queue au redémarrage
         while not self._queue.empty():
@@ -251,6 +267,10 @@ class LoopbackCapture:
     def stop(self) -> None:
         """Arrête la capture et libère les ressources audio."""
         self._is_running = False
+        with PORTAUDIO_LOCK:
+            self._stop_locked()
+
+    def _stop_locked(self) -> None:
         if self._stream:
             try:
                 if self._stream.is_active():

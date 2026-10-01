@@ -13,6 +13,8 @@ from typing import Any, Callable
 
 import pyaudiowpatch as pyaudio
 
+from airplay_sender.capture import PORTAUDIO_LOCK
+
 _LOGGER = logging.getLogger("airplay_sender.devices_watch")
 
 
@@ -34,16 +36,17 @@ class AudioDeviceWatcher:
         self._check_initial_device()
 
     def _check_initial_device(self) -> None:
-        pa = pyaudio.PyAudio()
-        try:
-            dev = pa.get_default_wasapi_loopback()
-            if dev:
-                self._current_device_name = str(dev.get("name"))
-                self._current_device_index = int(dev.get("index", -1))
-        except Exception as exc:  # noqa: BLE001
-            _LOGGER.debug("Impossible d'obtenir le loopback initial : %s", exc)
-        finally:
-            pa.terminate()
+        with PORTAUDIO_LOCK:
+            pa = pyaudio.PyAudio()
+            try:
+                dev = pa.get_default_wasapi_loopback()
+                if dev:
+                    self._current_device_name = str(dev.get("name"))
+                    self._current_device_index = int(dev.get("index", -1))
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.debug("Impossible d'obtenir le loopback initial : %s", exc)
+            finally:
+                pa.terminate()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -62,9 +65,15 @@ class AudioDeviceWatcher:
             if self._stop_event.wait(self.poll_interval):
                 break
 
-            pa = pyaudio.PyAudio()
             try:
-                dev = pa.get_default_wasapi_loopback()
+                # Le verrou n'est tenu que pendant l'interrogation de PortAudio : le rappel
+                # (qui redémarre la capture et reprend le verrou) s'exécute après.
+                with PORTAUDIO_LOCK:
+                    pa = pyaudio.PyAudio()
+                    try:
+                        dev = pa.get_default_wasapi_loopback()
+                    finally:
+                        pa.terminate()
                 if not dev:
                     continue
 
@@ -88,8 +97,6 @@ class AudioDeviceWatcher:
                     self._current_device_index = dev_index
             except Exception as exc:  # noqa: BLE001
                 _LOGGER.debug("Erreur lors du sondage de la sortie audio : %s", exc)
-            finally:
-                pa.terminate()
 
     def stop(self) -> None:
         self._stop_event.set()
