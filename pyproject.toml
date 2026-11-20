@@ -7,6 +7,7 @@ name = "airplay-sender"
 version = "0.1.0"
 description = "AirPlay Sender pour Windows (audio système vers enceinte Devialet)"
 readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
 dependencies = [
     "pyatv>=0.18.0",

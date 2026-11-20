@@ -88,6 +88,15 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### Sortie audio dédiée (optionnel) : VB-CABLE
+
+Pour que seul le son voulu soit envoyé à l'enceinte (sans muter le PC), l'application peut utiliser un périphérique audio virtuel de type **VB-CABLE** (« CABLE Input »).
+
+VB-CABLE est un logiciel tiers de [VB-Audio](https://vb-audio.com/Cable/) (gratuit, sous sa propre licence). Il n'est **pas** inclus dans ce dépôt et ne doit pas être redistribué : téléchargez-le depuis le site officiel.
+
+1. Téléchargez et décompressez le pack VB-CABLE dans `tools\vbcable\` (le fichier `VBCABLE_Setup_x64.exe` doit s'y trouver).
+2. Lancez `Installer_VB-CABLE.bat` (droits administrateur requis), puis cliquez sur **Install Driver**.
+
 ---
 
 ## Utilisation
@@ -201,3 +210,9 @@ L'exécutable autonome se trouve dans `dist\AirPlaySender\AirPlaySender.exe`.
 
 - **Latence du protocole AirPlay** : En raison du protocole AirPlay/RAOP et du tampon de sécurité contre les micro-coupures réseau (800 ms à 1 s), il existe un décalage de transmission normal de 1 à 2 secondes. Cette latence est inhérente au protocole AirPlay 1 audio et convient parfaitement à l'écoute de musique, podcasts ou flux audio continus, mais n'est pas adaptée au gaming ultra-compétitif.
 - **Protection DRM / Mode exclusif** : Si une application audio prend le contrôle exclusif de la carte son Windows (WASAPI Exclusive Mode), le loopback standard peut être temporairement indisponible jusqu'à la libération du périphérique.
+
+---
+
+## Licence
+
+Ce projet est distribué sous licence [MIT](LICENSE).
